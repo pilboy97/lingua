@@ -1,0 +1,45 @@
+package main
+
+type Node {
+    value num
+    next Node
+}
+
+type LinkedList {
+    begin Node
+    ---
+    append(value num) {
+        if self.begin is null {
+            self.begin = Node {
+                value: value,
+            }
+            return
+        }
+
+        var it = this.begin
+        for it.next is not null {
+            it = it.next
+        }
+
+        it.next = Node {
+            value: value,
+        }
+    }
+    print() {
+        var it = this.begin
+        for it is not null {
+            printf("%d\n", it.value)
+            it = it.next
+        }
+    }
+}
+
+func main() {
+    var list = LinkedList{}
+
+    list.append(1)
+    list.append(2)
+    list.append(3)
+
+    list.print()
+}

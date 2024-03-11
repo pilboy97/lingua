@@ -1,0 +1,15 @@
+package main
+
+func plus(x num) -> func(num) -> num {
+    return func (y num) -> num {
+        return x + y
+    }
+}
+
+func main() {
+    var plus3 = plus(3)
+    var plus5 = plus(5)
+
+    printf("%d", plus3(1)) // 4
+    printf("%d", plus5(1)) // 6
+}

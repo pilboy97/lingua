@@ -1,0 +1,28 @@
+package main
+
+type Node {
+    value num
+    next Node
+}
+
+func main() {
+    var x = Node {
+        value: 1,
+    }
+    var y = Node {
+        value: 2,
+    }
+    var z = Node {
+        value: 3,
+    }
+
+    x.next = y
+    y.next = z
+
+    var it = x
+
+    for it is not null {
+        printf("%d\n", it.value)
+        it = it.next
+    }
+}

@@ -5,12 +5,12 @@ type Person {
     age  num
     ---
     introduce() {
-        printf("Hi, my name is %s! I'm %d years old.\n", self.name, self.age)
+        printf("Hi, my name is %s! I'm %d years old.\n", this.name, this.age)
     }
 }
 
 func main() {
-    var me = new Person {
+    var me = Person {
         name: "Min Pilgi",
         age: 25,
     }
