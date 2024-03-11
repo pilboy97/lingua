@@ -1,0 +1,21 @@
+package main
+
+import time
+
+func timer(fn func()) -> func() {
+    var begin = time.Now()
+    return func() {
+        fn()
+        var end = time.Now()
+
+        printf("%s seconds elpased\n", end.Sub(begin))
+    }
+}
+
+func main() {
+    var fn = func() {
+        time.Sleep(time.Second)
+    }
+
+    timer(fn)()
+}

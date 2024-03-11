@@ -1,0 +1,15 @@
+package main
+
+func fn() {
+    var x = 1 / 0
+}
+func main() {
+    defer func() {
+        var err = recover()
+        if err is not null {
+            printf("error occurs: %s\n", err.Error())
+        }
+    }()
+
+    fn()
+}

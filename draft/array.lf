@@ -1,0 +1,17 @@
+package main
+
+func main() {
+    var list = new []num {1, 2, 3}
+    printf("%s\n", list)      // [1, 2, 3]
+    printf("%d\n", list[1])   // 2
+    printf("%d\n", list.len()) // 3
+    printf("%d\n", list.cap()) // 3
+
+    list.append(4)
+    printf("%s", list) // [1,2,3,4] 
+    printf("%d\n", list[1])   // 2
+    printf("%d\n", list.len()) // 4
+    printf("%d\n", list.cap()) // 6
+
+    delete list
+}

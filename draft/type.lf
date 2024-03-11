@@ -1,0 +1,22 @@
+package main
+
+type Person {
+    name []byte
+    age  num
+    ---
+    introduce() {
+        printf("Hi, my name is %s! I'm %d years old.\n", self.name, self.age)
+    }
+}
+
+func main() {
+    var me = new Person {
+        name: "Min Pilgi",
+        age: 25,
+    }
+    defer func(){
+        delete me
+    }()
+
+    me.introduce()
+}
