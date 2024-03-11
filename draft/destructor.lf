@@ -1,0 +1,36 @@
+package main
+
+type Object {
+    id num
+    ---
+    __del__() {
+        printf("Object destroy: %d", self.id)
+    }
+}
+
+func main() { // 0
+    var x Obj = Obj{ id: 0 }
+    defer {
+        delete x
+    }
+
+    {
+        var y Obj = Obj{ id: 1 }
+        defer {
+            delete y
+        }
+        { // 2
+            var z Obj = Obj{ id: 2 }
+            defer {
+                delete z
+            }
+
+            printf("exit 2")
+            // Object destroy: 2
+        }
+        print("exit 1")
+        // Object destroy: 1
+    }
+    print("exit 0")
+    // Object destroy: 0
+}
