@@ -4,7 +4,7 @@ type Object {
     id num
     ---
     __del__() {
-        printf("Object destroy: %d", self.id)
+        printf("Object destroyed: %d", self.id)
     }
 }
 
