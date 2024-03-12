@@ -1,0 +1,10 @@
+<program> := <define-function><program> | <define-var><program> | <define-class><program> | <define-interface><program> | 0
+<define-function> := func <name>( [<name> <type>{, <name> <type>}] ) <block-statement>
+<define-class> := class <name> { {<name> <type>;} --- {<name>([<name> <type>{, <name> <type>}])[-> <type>]<block-statement>} }
+<define-interface> := interface <name> { {<name>([<name> <type>{, <name> <type>}])[-> <type>]} }
+<define-var> := var <name> [<type>] [=<expression>]
+<statement> := <block-statement> | <if-statement> | <for-statement> | <define-var> | <assign-statement>
+<block-statement> := { {<statements>} }
+<if-statement> := if <expression> <block-statement> {else if <block-statement>} [else <block-statement>]
+<for-statement> := for [<expression>[;<expression>;<expression>]] <block-statement>
+<assign-statement> := <expression> = <expression>
