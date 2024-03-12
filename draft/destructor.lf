@@ -1,6 +1,4 @@
-package main
-
-type Object {
+class Object {
     id num
     ---
     __del__() {

@@ -1,11 +1,9 @@
-package main
-
 func main() {
     var x = 1        // num
-    var y = u1       // unum
+    var y = \u1       // unum
     var z = 0.1      // real
     var a = 'a'      // byte
-    var b = b2F      // byte
+    var b = \b2E      // byte
     var c = "Hello!" // []byte 
     var d = true     // bool
     var e = false    // bool

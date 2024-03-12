@@ -1,6 +1,4 @@
-package main
-
-type Node {
+class Node {
     value num
     next Node
 }

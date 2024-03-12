@@ -1,11 +1,9 @@
-package main
-
-type Node {
+class Node {
     value num
     next Node
 }
 
-type LinkedList {
+class LinkedList {
     begin Node
     ---
     append(value num) {
@@ -16,7 +14,7 @@ type LinkedList {
             return
         }
 
-        var it = this.begin
+        var it = self.begin
         for it.next is not null {
             it = it.next
         }
@@ -26,7 +24,7 @@ type LinkedList {
         }
     }
     print() {
-        var it = this.begin
+        var it = self.begin
         for it is not null {
             printf("%d\n", it.value)
             it = it.next

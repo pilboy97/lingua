@@ -1,0 +1,21 @@
+#ifndef __CODE_HPP__
+#define __CODE_HPP__
+
+enum TokenCode {
+    LNUM, LSTR, LUNUM, LREAL, LBYTE, LTRUE, LFALSE, WORD,
+    NUM, UNUM, REAL, BYTE, BOOL,
+    ADD, SUB, MUL, DIV, MOD, ASS,
+    GR, LE, GEQ, LEQ, EQ, NEQ,
+    NOT, AND, OR, XOR, RSH, LSH,
+    LNOT, LAND, LOR,
+    IS, NIL, DOT, COMMA,
+    OBR, CBR, OSB, CSB, OBL, CBL,
+    CLASS, INTERFACE, SEP,
+    FUNC, VAR, ARROW,
+    IF, ELSE,FOR, RETURN, BREAK, CONTINUE,
+    DEFER,
+    COLON, SCOLON,
+    EOL
+};
+
+#endif

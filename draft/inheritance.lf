@@ -1,0 +1,27 @@
+class Human {
+    name []byte
+    age num
+    ---
+    introduce() {
+        printf("Hi, my name is %s. I'm %d years old", self.name, self.age)
+    }
+}
+class Soldier: Human{
+    ---
+    gunFire() {
+        printf("Grrr")
+    }
+}
+
+func main() {
+    var x Soldier = Soldier {
+        name: "Minsu",
+        age: 20,
+    }
+    var y Human = x
+
+    x.introduce()
+    x.gunFire()
+
+    y.introduce()
+}

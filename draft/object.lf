@@ -1,11 +1,9 @@
-package main
-
-type Person {
+class Person {
     name []byte
     age  num
     ---
     introduce() {
-        printf("Hi, my name is %s! I'm %d years old.\n", this.name, this.age)
+        printf("Hi, my name is %s! I'm %d years old.\n", self.name, self.age)
     }
 }
 

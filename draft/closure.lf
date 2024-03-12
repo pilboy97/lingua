@@ -1,5 +1,3 @@
-package main
-
 func plus(x num) -> func(num) -> num {
     return func (y num) -> num {
         return x + y
