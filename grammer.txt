@@ -8,3 +8,15 @@
 <if-statement> := if <expression> <block-statement> {else if <block-statement>} [else <block-statement>]
 <for-statement> := for [<expression>[;<expression>;<expression>]] <block-statement>
 <assign-statement> := <expression> = <expression>
+<expression> := <expr1> or <expression> | <expr1>
+<expr1> := <expr2> and <expr1> | <expr2>
+<expr2> := <expr3>|<expr2> | <expr3>
+<expr3> := <expr4>^<expr3> | <expr4>
+<expr4> := <expr5>&<expr4> | <expr5>
+<expr5> := <expr6>==<expr5> | <expr6>!=<expr5> | <expr6>
+<expr6> := <expr7> > <expr6> | <expr7> < <expr6> | <expr7> >= <expr6> | <expr7> <= <expr6> 
+<expr7> := <expr8> << <expr7> | <expr8> >> <expr7> | <expr8>
+<expr8> := <expr9> + <expr8> | <expr9> - <expr8> | <expr9>
+<expr9> := <expr10> * <expr9> | <expr10> / <expr9> | <expr10> % <expr9>
+<expr10> := <expr11> as <type> | <expr11> is <type>
+<expr11> := sizeof <expr12> | not <expr12> | ~<expr12> | -<expr12>
