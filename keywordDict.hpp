@@ -27,6 +27,29 @@ struct KeywordDict {
         dict.push_back(std::make_pair(keyword, value));
     }
     const char* sprint(int value) {
+        switch (value) {
+            case LNUM:
+                return "literal number";
+            case LSTR:
+                return "literal string";
+            case LUNUM:
+                return "literal unsigned number";
+            case LREAL:
+                return "literal real number";
+            case LBYTE:
+                return "literal byte number";
+            case LTRUE:
+                return "true";
+            case LFALSE:
+                return "false";
+            case WORD:
+                return "variable name";
+            case EOL:
+                return "end of line";
+            default:
+                break;
+        }
+
         for(int i = 0;i < dict.size();i++) {
             if(dict[i].second == value) {
                 return dict[i].first;

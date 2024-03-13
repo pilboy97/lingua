@@ -3,11 +3,11 @@
 <define-class> := class <name> { {<name> <type>;} --- {<name>([<name> <type>{, <name> <type>}])[-> <type>]<block-statement>} }
 <define-interface> := interface <name> { {<name>([<name> <type>{, <name> <type>}])[-> <type>]} }
 <define-var> := var <name> [<type>] [=<expression>]
-<statement> := <block-statement> | <if-statement> | <for-statement> | <define-var> | <assign-statement>
+<statement> := <block-statement>; | <if-statement>; | <for-statement>; | <define-var>; | <assign-statement>; | <expression>;
 <block-statement> := { {<statements>} }
 <if-statement> := if <expression> <block-statement> {else if <block-statement>} [else <block-statement>]
 <for-statement> := for [<expression>[;<expression>;<expression>]] <block-statement>
-<assign-statement> := <expression> = <expression>
+<assign-statement> := <name> = <expression>
 <expression> := <expr1> or <expression> | <expr1>
 <expr1> := <expr2> and <expr1> | <expr2>
 <expr2> := <expr3>|<expr2> | <expr3>
@@ -20,3 +20,5 @@
 <expr9> := <expr10> * <expr9> | <expr10> / <expr9> | <expr10> % <expr9>
 <expr10> := <expr11> as <type> | <expr11> is <type>
 <expr11> := sizeof <expr12> | not <expr12> | ~<expr12> | -<expr12>
+<expr12> := <factor>[ <expression> ] | <factor>( [<expression>{,<expression>}] ) | <factor>.<name>
+<factor> := (<expression>) | <number> | <name> | <literal-string> | true | false
