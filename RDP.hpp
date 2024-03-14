@@ -67,18 +67,20 @@ struct Expr2 {
 struct Expr1 {
     std::vector<Expr2> childs;
 };
-struct Expression {
+struct Expr {
     std::vector<Expr1> childs;
 };
 struct Number {
+    long long value;
+};
+struct UNumber { 
     unsigned long long value;
 };
-struct VarName {
-    char *name;
+struct ByteNumber {
+    unsigned char value;
 };
-struct Type {
-    int kind;
-    std::vector<Type> frame;
+struct Word {
+    char *word;
 };
 struct LiteralString {
     char *str;
@@ -89,32 +91,40 @@ struct True {
 struct False {
 
 };
-struct Statement {
+struct Object {
+    Type type;
+    std::vector<std::pair<char*, Expr> > value;
+};
+struct Type {
+    int kind;
+    std::vector<Type> frame;
+};
+struct Stmt {
     int kind;
     void *stmt;
 };
-struct BlockStatment {
-    std::vector<Statement> childs;
+struct BlockStmt {
+    std::vector<Stmt> childs;
 };
-struct IfStatement {
-    std::vector<std::pair<Expression, BlockStatment> > _if;
-    BlockStatment *_else;
+struct IfStmt {
+    std::vector<std::pair<Expr, BlockStmt> > _if;
+    BlockStmt *_else;
 };
-struct ForStatement {
-    Expression *init;
-    Expression cond;
-    Expression *act;
+struct ForStmt {
+    Expr *init;
+    Expr cond;
+    Expr *act;
 
-    BlockStatment body;
+    BlockStmt body;
 };
-struct AssignStatement {
-    Expression src;
-    Expression dst;
+struct AssignStmt {
+    Expr src;
+    Expr dst;
 };
 struct DefVar {
     char *name;
     Type type;
-    Expression *init;
+    Expr *init;
 };
 struct Method {
     bool isPrivate;
@@ -139,14 +149,130 @@ struct DefFunc {
     char *name;
     std::vector<std::pair<char *, Type> > frame;
     Type ret;
-    BlockStatment body;
+    BlockStmt body;
 };
 struct Program {
     std::vector<std::pair<int, void*> > childs;
 };
 
-Program parseProgram(std::vector<Token> code) {
+Factor parseFactor() {
+    if(chk(OBR)) {
+
+    }
+    else if(chk(LNUM)) {
+
+    }
+    else if(chk(LBYTE)) {
+        
+    }
+    else if(chk(LSTR)) {
+
+    }
+    else if(chk(WORD)) {
+
+    }
+}
+Expr12 parseExpr12() {
+
+}
+Expr11 parseExpr11() {
+
+}
+Expr10 parseExpr10() {
+
+}
+Expr9 parseExpr9() {
+
+}
+Expr8 parseExpr8() {
+
+}
+Expr7 parseExpr7() {
+
+}
+Expr6 parseExpr6() {
+
+}
+Expr5 parseExpr5() {
+
+}
+Expr4 parseExpr4() {
+
+}
+Expr3 parseExpr3() {
+
+}
+Expr2 parseExpr2() {
+
+}
+Expr1 parseExpr1() {
+
+}
+Expr parseExpr() {
+
+}
+AssignStmt parseAssignStmt() {
+
+}
+ForStmt parseForStmt() {
+
+}
+IfStmt parseIfStmt() {
+
+}
+BlockStmt parseBlockStmt() {
+
+}
+Stmt parseStmt() {
+
+}
+DefVar parseDefVar() {
+
+}
+DefClass parseDefClass() {
+
+}
+DefInterface parseDefInterface() {
+
+}
+DefFunc parseDefFunc() {
+
+}
+
+Program parseProgram() {
+    Program ret;
+
+    while(header < ::code.size()) {
+        if(chk(FUNC)) {
+            DefFunc *neo = new DefFunc();
+            *neo = parseDefFunc();
+            ret.childs.push_back(std::make_pair(FUNC, neo));
+        }
+        else if(chk(VAR)) {
+            DefVar *neo = new DefVar();
+            *neo = parseDefVar();
+            ret.childs.push_back(std::make_pair(VAR, neo));
+        }
+        else if(chk(CLASS)) {
+            DefClass *neo = new DefClass();
+            *neo = parseDefClass();
+            ret.childs.push_back(std::make_pair(CLASS, neo));
+        }
+        else if(chk(INTERFACE)) {
+            DefInterface *neo = new DefInterface();
+            *neo = parseDefInterface();
+            ret.childs.push_back(std::make_pair(INTERFACE, neo));
+        }
+        else {
+            panicf("unexpected %s", kDict.sprint(code[header].kind));
+        }
+    }
+}
+
+Program runRDP(std::vector<Token> code) {
     header = 0;
     ::code = code;
+
+    return parseProgram();
 }
 #endif
