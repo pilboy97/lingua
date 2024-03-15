@@ -36,9 +36,6 @@ Token must(int kind) {
 
     return code[header++];
 }
-Token now() {
-    return code[header];
-}
 
 struct Type {
     int kind;
@@ -236,7 +233,7 @@ Type parseType() {
     return ret;
 }
 Factor parseFactor() {
-    if(chk(OBR)) {
+    if(code[header].kind == OBR) {
         Expr *neo = new Expr();
         *neo = parseExpr();
 
@@ -244,37 +241,37 @@ Factor parseFactor() {
 
         return (Factor) {.kind=OBR, .ptr=neo};
     }
-    else if(chk(LNUM)) {
+    else if(code[header].kind == LNUM) {
         Number *neo = new Number();
-        neo->value = now().value;
+        neo->value = code[header].value;
 
         return (Factor) {.kind=LNUM, .ptr=neo};
     }
-    else if(chk(LUNUM)) {
+    else if(code[header].kind == LUNUM) {
         UNumber *neo = new UNumber();
-        neo->value = now().value;
+        neo->value = code[header].value;
 
         return (Factor) {.kind=LUNUM, .ptr=neo};
     }
-    else if(chk(LBYTE)) {
+    else if(code[header].kind == LBYTE) {
         ByteNumber *neo = new ByteNumber();
-        neo->value = now().value;
+        neo->value = code[header].value;
 
         return (Factor) {.kind=LBYTE, .ptr=neo};
     }
-    else if(chk(LSTR)) {
+    else if(code[header].kind == LSTR) {
         LiteralString *neo = new LiteralString();
-        neo->str = now().str;
+        neo->str = code[header].str;
 
         return (Factor) {.kind=LSTR, .ptr=neo};
     }
-    else if(chk(WORD)) {
+    else if(code[header].kind == WORD) {
         Word *neo = new Word();
-        neo->word = now().str;
+        neo->word = code[header].str;
 
         return (Factor) {.kind=WORD, .ptr=neo};
     }
-    else if(chk(OSB)) {
+    else if(code[header].kind == OSB) {
         // array literal
         must(CSB);
 

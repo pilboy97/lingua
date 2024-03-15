@@ -6,6 +6,7 @@
 #include "parse.hpp"
 #include "addScolon.hpp"
 #include "RDP.hpp"
+#include "exec.hpp"
 
 #define MAX_SOURCE_LENGTH 1000000
 
