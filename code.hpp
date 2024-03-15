@@ -8,7 +8,7 @@ enum TokenCode {
     GR, LE, GEQ, LEQ, EQ, NEQ,
     NOT, AND, OR, XOR, RSH, LSH,
     LNOT, LAND, LOR,
-    IS, NIL, DOT, COMMA,
+    IS, AS, NIL, DOT, COMMA,
     OBR, CBR, OSB, CSB, OBL, CBL,
     CLASS, INTERFACE, SEP,
     FUNC, VAR, ARROW,

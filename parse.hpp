@@ -15,7 +15,7 @@ char errMsg[ERR_MSG_LEN];
 extern KeywordDict kDict;
 
 void parsePanic(int line, int character, const char *msg) {
-    panicf("at %d, %d: %s", line, character, msg);
+    panicf("at line %d, %d: %s", line, character, msg);
 }
 char *substr(const char *str, int begin, int end) {
     char *ret = (char *) malloc(sizeof(char) * (end - begin));
@@ -96,7 +96,7 @@ std::vector<Token> parse(const char* str) {
                 if(ret.size() != 0) {
                     auto last = ret.back();
                     if(!isTaboo(last.kind)) {
-                        ret.push_back((Token){.kind=SCOLON, .str=";"});
+                        ret.push_back((Token){.kind=SCOLON, .str=";", .line=line, .col=i-sp});
                     }
                 }
                 i++;
@@ -107,12 +107,11 @@ std::vector<Token> parse(const char* str) {
         else if(i + 1 < len && str[i] == '/' && str[i+1] == '/') {
             i += 2;
             while(i < len && str[i] != '\n') i++;
-            i++;
         }
         else if(str[i] >= '0' && str[i] <= '9') {
             // literal number
 
-            ret.push_back((Token){.kind=LNUM, .value=parseNumber(str, i, 32)});
+            ret.push_back((Token){.kind=LNUM, .value=parseNumber(str, i, 32), .line=line, .col=i-sp});
         }
         else if(str[i] == '\\') {
             // maybe unsigned number literal or byte literal
@@ -123,14 +122,14 @@ std::vector<Token> parse(const char* str) {
             if(str[i] == 'u' || str[i] == 'U') {
                 // literal unsigned number
                 i++;
-                Token t = {.kind=LUNUM, .value = parseNumber(str, i, 32)};
+                Token t = {.kind=LUNUM, .value = parseNumber(str, i, 32), .line=line, .col=i-sp-1};
 
                 ret.push_back(t);
             }
             else if(str[i] == 'b' || str[i] == 'B') {
                 //literal byte number
                 i++;
-                Token t = {.kind=LBYTE, .value = parseNumber(str, i, 2)};
+                Token t = {.kind=LBYTE, .value = parseNumber(str, i, 2), .line=line, .col=i-sp-1};
 
                 ret.push_back(t);
             }
@@ -158,7 +157,7 @@ std::vector<Token> parse(const char* str) {
             end = i;
             i++;
 
-            ret.push_back((Token) {.kind=LSTR, .str= substr(str, begin, end)});
+            ret.push_back((Token) {.kind=LSTR, .str= substr(str, begin, end), .line=line, .col=begin-sp});
         }
         else if(str[i] == '_' || (str[i] >= 'a' && str[i] <= 'z') || (str[i] >= 'A' && str[i] <= 'Z')) {
             // maybe word or keyword
@@ -175,10 +174,10 @@ std::vector<Token> parse(const char* str) {
 
             int v = kDict.get(word);
             if(v != -1) {
-                ret.push_back((Token){.kind=v, .str=word});
+                ret.push_back((Token){.kind=v, .str=word, .line=line, .col=begin-sp});
             }
             else {
-                ret.push_back((Token){.kind=WORD, .str=word});
+                ret.push_back((Token){.kind=WORD, .str=word, .line=line, .col=begin-sp});
             }
         }
         else {
@@ -193,7 +192,7 @@ std::vector<Token> parse(const char* str) {
                     if(v != -1) {
                         found = true;
                         i += length;
-                        ret.push_back((Token){.kind=v, .str=s});
+                        ret.push_back((Token){.kind=v, .str=s, .line=line, .col=i-length-sp});
                     }
                 }
             }

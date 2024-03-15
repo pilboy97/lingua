@@ -7,7 +7,7 @@
 <block-statement> := { {<statements>} }
 <if-statement> := if <expr> <block-statement> {else if <block-statement>} [else <block-statement>]
 <for-statement> := for [<expr>[;<expr>;<expr>]] <block-statement>
-<assign-statement> := <word> = <expr>
+<assign-statement> := <expr> = <expr>
 <expr> := <expr1> or <expr> | <expr1>
 <expr1> := <expr2> and <expr1> | <expr2>
 <expr2> := <expr3>|<expr2> | <expr3>
@@ -18,8 +18,9 @@
 <expr7> := <expr8> << <expr7> | <expr8> >> <expr7> | <expr8>
 <expr8> := <expr9> + <expr8> | <expr9> - <expr8> | <expr9>
 <expr9> := <expr10> * <expr9> | <expr10> / <expr9> | <expr10> % <expr9>
-<expr10> := <expr11> as <type> | <expr11> is <type>
-<expr11> := sizeof <expr12> | not <expr12> | ~<expr12> | -<expr12>
-<expr12> := <factor>[ <expr> ] | <factor>( [<expr>{,<expr>}] ) | <factor>.<word>
-<factor> := (<expr>) | <number> | <word> | <literal-string> | true | false | <object>
+<expr10> := <expr11> {(as|is) <type>}
+<expr11> := {not|~|-} <expr12>
+<expr12> := <factor>{[ <expr> ] | ( [<expr>{,<expr>}] ) | .<word> | <init-list>}
+<factor> := (<expr>) | <number> | <word> | <literal-string> | true | false | <object> | <lambda>
 <object> := <type> { <word>:<expr>{, <word>:<expr>} }
+<init-list> := { <name>:<expression>{,<name>:<expression>} }

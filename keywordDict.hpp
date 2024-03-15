@@ -43,7 +43,7 @@ struct KeywordDict {
             case LFALSE:
                 return "false";
             case WORD:
-                return "variable name";
+                return "word";
             case EOL:
                 return "end of line";
             default:
@@ -92,6 +92,7 @@ void initDict() {
     kDict.push("and", LAND);
     kDict.push("or", LOR);
     kDict.push("is", IS);
+    kDict.push("as", AS);
     kDict.push(".", DOT);
     kDict.push(",", COMMA);
     kDict.push("[", OSB);

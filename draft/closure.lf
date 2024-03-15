@@ -10,7 +10,4 @@ func main() {
 
     printf("%d", plus3(1)) // 4
     printf("%d", plus5(1)) // 6
-
-    delete plus3
-    delete plus5
 }

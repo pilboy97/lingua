@@ -10,6 +10,4 @@ func main() {
     printf("%d\n", list[1])    // 2
     printf("%d\n", list.len()) // 4
     printf("%d\n", list.cap()) // 6
-
-    delete list
 }

@@ -51,6 +51,7 @@ void panicf(const char* msg, ...) {
             putchar(msg[i]);
         }
     }
+    puts("");
     exit(0);
 }
 

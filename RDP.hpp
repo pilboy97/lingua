@@ -10,50 +10,71 @@
 static int header;
 static std::vector<Token> code;
 
-
+void panicUnexpectedToken() {
+    panicf("at line %d, %d:unexpected %s", code[header].line, code[header].col, kDict.sprint(code[header].kind));
+}
 void forward() {
     header++;
 }
 bool chk(int kind) {
-    if(header < code.size()) return code[header].kind == kind;
+    if(header < code.size()) {
+        if(code[header].kind == kind) {
+            forward();
+            return true;
+        }
+        else {
+            return false;
+        }
+    } 
+    return false;
 }
-void must(int kind) {
+Token must(int kind) {
     if(header >= code.size()) 
         panic("unexpected EOF");
     if(code[header].kind != kind)
-        panicf("unexpected %s: %s needed", kDict.sprint(code[header].kind), kDict.sprint(kind));
+        panicf("at line %d, %d: unexpected %s: %s needed", code[header].line, code[header].col, kDict.sprint(code[header].kind), kDict.sprint(kind));
 
-    header++;
+    return code[header++];
+}
+Token now() {
+    return code[header];
 }
 
+struct Type {
+    int kind;
+    const char *name;
+    std::vector<Type> frame;
+};
 struct Factor {
     int kind;
     void *ptr;
 };
 struct Expr12 {
     Factor f;
-    std::vector<std::pair<int, void*> > childs;
+    std::vector<std::pair<TokenCode, void*> > childs;
 };
 struct Expr11 {
-    std::vector<std::pair<int, Expr12> > childs;
+    Expr12 child;
+    std::vector<TokenCode> oper;
 };
 struct Expr10 {
-    std::vector<std::pair<int, Expr11> > childs;
+    Expr11 child;
+    std::vector<std::pair<TokenCode, Type> > oper;
 };
 struct Expr9 {
-    std::vector<std::pair<int, Expr10> > childs;
+    std::vector<std::pair<TokenCode, Expr10> > childs;
 };
 struct Expr8 {
-    std::vector<std::pair<int, Expr9> > childs;
+    std::vector<std::pair<TokenCode, Expr9> > childs;
 };
 struct Expr7 {
-    std::vector<std::pair<int, Expr8> > childs;
+    std::vector<std::pair<TokenCode, Expr8> > childs;
 };
 struct Expr6 {
-    std::vector<std::pair<int, Expr7> > childs;
+    std::vector<std::pair<TokenCode, Expr7> > childs;
 };
 struct Expr5 {
-    std::vector<std::pair<int, Expr6> > childs;
+    std::vector<std::pair<TokenCode, Expr6> > childs;
 };
 struct Expr4 {
     std::vector<Expr5> childs;
@@ -70,6 +91,15 @@ struct Expr1 {
 struct Expr {
     std::vector<Expr1> childs;
 };
+struct FCall {
+    std::vector<Expr> list;
+};
+struct Idx {
+    Expr id;
+};
+struct InitList {
+    std::vector<std::pair<const char*, Expr> > list;
+};
 struct Number {
     long long value;
 };
@@ -80,24 +110,18 @@ struct ByteNumber {
     unsigned char value;
 };
 struct Word {
-    char *word;
+    const char *word;
 };
 struct LiteralString {
-    char *str;
+    const char *str;
 };
-struct True {
-
-};
-struct False {
-
+struct LiteralArray {
+    Type type;
+    std::vector<Expr> elem;
 };
 struct Object {
     Type type;
-    std::vector<std::pair<char*, Expr> > value;
-};
-struct Type {
-    int kind;
-    std::vector<Type> frame;
+    std::vector<std::pair<const char*, Expr> > value;
 };
 struct Stmt {
     int kind;
@@ -122,32 +146,40 @@ struct AssignStmt {
     Expr dst;
 };
 struct DefVar {
-    char *name;
-    Type type;
+    const char *name;
+    Type *type;
     Expr *init;
 };
 struct Method {
     bool isPrivate;
-    std::vector<std::pair<char *, Type> > frame;
+    const char *name;
+    std::vector<std::pair<const char *, Type> > frame;
+    BlockStmt body;
     Type ret;
 };
-struct Attr {
+struct Field {
     bool isPrivate;
-    char *name;
+    const char *name;
     Type type;
 };
+struct IMember {
+    bool isPrivate;
+    const char *name;
+    std::vector<Type> frame;
+    Type ret;
+};
 struct DefInterface {
-    char *name;
-    std::vector<Method> method;
+    const char *name;
+    std::vector<IMember> method;
 };
 struct DefClass {
-    char *name;
-    std::vector<Attr> attr;
+    const char *name;
+    std::vector<Field> field;
     std::vector<Method> method;
 };
 struct DefFunc {
-    char *name;
-    std::vector<std::pair<char *, Type> > frame;
+    const char *name;
+    std::vector<std::pair<const char *, Type> > frame;
     Type ret;
     BlockStmt body;
 };
@@ -155,121 +187,671 @@ struct Program {
     std::vector<std::pair<int, void*> > childs;
 };
 
+FCall parseFCall();
+Idx parseIdx();
+InitList parseInitList();
+Expr parseExpr();
+
+Type parseType() {
+    Type ret;
+    ret.kind = 0;
+
+    if(chk(NUM)) {
+        ret.kind = NUM;
+    }
+    else if(chk(UNUM)) {
+        ret.kind = UNUM;
+    }
+    else if(chk(BYTE)) {
+        ret.kind = BYTE;
+    }
+    else if(chk(BOOL)) {
+        ret.kind = BOOL;
+    }
+    else if(chk(FUNC)) {
+        ret.kind = FUNC;
+        ret.frame.push_back((Type){.kind=0});
+
+        must(OBR);
+        while(code[header].kind != CBR) {
+            ret.frame.push_back(parseType());
+            chk(COMMA);
+        }
+        must(CBR);
+        if(chk(ARROW)) {
+            ret.frame.front() = parseType();
+        }
+    }
+    else if(chk(OSB)){
+        ret.kind = OSB;
+        must(CSB);
+
+        ret.frame.push_back(parseType());
+    }
+    else {
+        ret.kind = CLASS;
+        ret.name = must(WORD).str;
+    }
+
+    return ret;
+}
 Factor parseFactor() {
     if(chk(OBR)) {
+        Expr *neo = new Expr();
+        *neo = parseExpr();
 
+        must(CBR);
+
+        return (Factor) {.kind=OBR, .ptr=neo};
     }
     else if(chk(LNUM)) {
+        Number *neo = new Number();
+        neo->value = now().value;
 
+        return (Factor) {.kind=LNUM, .ptr=neo};
+    }
+    else if(chk(LUNUM)) {
+        UNumber *neo = new UNumber();
+        neo->value = now().value;
+
+        return (Factor) {.kind=LUNUM, .ptr=neo};
     }
     else if(chk(LBYTE)) {
-        
+        ByteNumber *neo = new ByteNumber();
+        neo->value = now().value;
+
+        return (Factor) {.kind=LBYTE, .ptr=neo};
     }
     else if(chk(LSTR)) {
+        LiteralString *neo = new LiteralString();
+        neo->str = now().str;
 
+        return (Factor) {.kind=LSTR, .ptr=neo};
     }
     else if(chk(WORD)) {
+        Word *neo = new Word();
+        neo->word = now().str;
 
+        return (Factor) {.kind=WORD, .ptr=neo};
     }
+    else if(chk(OSB)) {
+        // array literal
+        must(CSB);
+
+        LiteralArray *neo = new LiteralArray();
+        neo->type = parseType();
+
+        must(OBL);
+        while(code[header].kind != CBL) {
+            neo->elem.push_back(parseExpr());
+            chk(COMMA);
+        }
+        must(CBL);
+    }
+    else if(chk(LTRUE)) {
+        return (Factor) {.kind=LTRUE, .ptr=NULL};
+    }
+    else if(chk(LFALSE)) {
+        return (Factor) {.kind=LFALSE, .ptr=NULL};
+    }
+    else {
+        panicUnexpectedToken();
+    }
+
+    return (Factor){};
 }
 Expr12 parseExpr12() {
+    Expr12 ret;
 
+    ret.f = parseFactor();
+    
+    bool stop;
+    do {
+        stop = true;
+
+        if(code[header].kind == OBR) {
+            stop = false;
+            
+            FCall *fc = new FCall();
+            *fc = parseFCall();
+            ret.childs.push_back(std::make_pair(OBR, fc));
+        }
+        else if(code[header].kind == OSB) {
+            stop = false;
+
+            Idx *idx = new Idx();
+            *idx = parseIdx();
+            ret.childs.push_back(std::make_pair(OSB, idx));
+        }
+        else if(code[header].kind == OBL) {
+            stop = false;
+
+            InitList *list = new InitList();
+            *list = parseInitList();
+            ret.childs.push_back(std::make_pair(OBL, list));
+        }
+        else if(chk(DOT)) {
+            stop = false;
+
+            Word *neo = new Word();
+            neo->word = must(WORD).str;
+            ret.childs.push_back(std::make_pair(WORD, neo));
+        }
+    } while(!stop);
+
+    return ret;
 }
 Expr11 parseExpr11() {
+    Expr11 ret;
 
+    while (true) {
+        if(chk(NOT)) {
+            ret.oper.push_back(NOT);
+        }
+        else if(chk(LNOT)) {
+            ret.oper.push_back(LNOT);
+        }
+        else if(chk(SUB)) {
+            ret.oper.push_back(SUB);
+        }
+        else break;
+    }
+
+    ret.child = parseExpr12();
+
+    return ret;
 }
 Expr10 parseExpr10() {
+    Expr10 ret;
+    ret.child = parseExpr11();
 
+    while(true) {
+        if(chk(IS)) {
+            ret.oper.push_back(std::make_pair(IS, parseType()));
+        }
+        else if(chk(AS)) {
+            ret.oper.push_back(std::make_pair(IS, parseType()));
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr9 parseExpr9() {
+    Expr9 ret;
+    ret.childs.push_back(std::make_pair(SCOLON, parseExpr10()));
 
+    while(true) {
+        if(chk(MUL)) {
+            ret.childs.push_back(std::make_pair(MUL, parseExpr10()));
+        }
+        else if(chk(DIV)) {
+            ret.childs.push_back(std::make_pair(DIV, parseExpr10()));
+        }
+        else if(chk(MOD)) {
+            ret.childs.push_back(std::make_pair(MOD, parseExpr10()));
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr8 parseExpr8() {
+    Expr8 ret;
+    ret.childs.push_back(std::make_pair(SCOLON, parseExpr9()));
 
+    while(true) {
+        if(chk(ADD)) {
+            ret.childs.push_back(std::make_pair(ADD, parseExpr9()));
+        }
+        else if(chk(SUB)) {
+            ret.childs.push_back(std::make_pair(SUB, parseExpr9()));
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr7 parseExpr7() {
+    Expr7 ret;
+    ret.childs.push_back(std::make_pair(SCOLON, parseExpr8()));
 
+    while(true) {
+        if(chk(LSH)) {
+            ret.childs.push_back(std::make_pair(LSH, parseExpr8()));
+        }
+        else if(chk(RSH)) {
+            ret.childs.push_back(std::make_pair(RSH, parseExpr8()));
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr6 parseExpr6() {
+    Expr6 ret;
+    ret.childs.push_back(std::make_pair(SCOLON, parseExpr7()));
 
+    while(true) {
+        if(chk(GR)) {
+            ret.childs.push_back(std::make_pair(GR, parseExpr7()));
+        }
+        else if(chk(LE)) {
+            ret.childs.push_back(std::make_pair(LE, parseExpr7()));
+        }
+        else if(chk(GEQ)) {
+            ret.childs.push_back(std::make_pair(GEQ, parseExpr7()));
+        }
+        else if(chk(LEQ)) {
+            ret.childs.push_back(std::make_pair(LEQ, parseExpr7()));
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr5 parseExpr5() {
+    Expr5 ret;
+    ret.childs.push_back(std::make_pair(SCOLON, parseExpr6()));
 
+    while(true) {
+        if(chk(EQ)) {
+            ret.childs.push_back(std::make_pair(EQ, parseExpr6()));
+        }
+        else if(chk(NEQ)) {
+            ret.childs.push_back(std::make_pair(NEQ, parseExpr6()));
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr4 parseExpr4() {
+    Expr4 ret;
+    ret.childs.push_back(parseExpr5());
 
+    while(true) {
+        if(chk(AND)) {
+            ret.childs.push_back(parseExpr5());
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr3 parseExpr3() {
+    Expr3 ret;
+    ret.childs.push_back(parseExpr4());
 
+    while(true) {
+        if(chk(XOR)) {
+            ret.childs.push_back(parseExpr4());
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr2 parseExpr2() {
+    Expr2 ret;
+    ret.childs.push_back(parseExpr3());
 
+    while(true) {
+        if(chk(OR)) {
+            ret.childs.push_back(parseExpr3());
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr1 parseExpr1() {
+    Expr1 ret;
+    ret.childs.push_back(parseExpr2());
 
+    while(true) {
+        if(chk(AND)) {
+            ret.childs.push_back(parseExpr2());
+        }
+        else break;
+    }
+
+    return ret;
 }
 Expr parseExpr() {
+    Expr ret;
+    ret.childs.push_back(parseExpr1());
 
+    while(true) {
+        if(chk(OR)) {
+            ret.childs.push_back(parseExpr1());
+        }
+        else break;
+    }
+
+    return ret;
+}
+Idx parseIdx() {
+    Idx ret;
+    must(OSB);
+
+    ret.id = parseExpr();
+
+    must(CSB);
+
+    return ret;
+}
+InitList parseInitList() {
+    InitList ret;
+
+    must(OBL);
+
+    while(code[header].kind != CBL) {
+        const char *name = must(WORD).str;
+        must(COLON);
+        Expr e = parseExpr();
+
+        ret.list.push_back(std::make_pair(name, e));
+        chk(COMMA);
+    }
+
+    must(CBL);
+
+    return ret;
+}
+FCall parseFCall() {
+    FCall ret;
+
+    must(OBR);
+
+    while(code[header].kind != CBR) {
+        ret.list.push_back(parseExpr());
+        chk(COMMA);
+    }
+
+    must(CBR);
+
+    return ret;
 }
 AssignStmt parseAssignStmt() {
+    AssignStmt ret;
 
+    ret.src = parseExpr();
+    must(ASS);
+    ret.dst = parseExpr();
+
+    return ret;
+}
+Stmt parseStmt();
+BlockStmt parseBlockStmt() {
+    BlockStmt ret;
+
+    must(OBL);
+
+    while(code[header].kind != CBL) {
+        ret.childs.push_back(parseStmt());
+        must(SCOLON);
+    }
+
+    must(CBL);
+
+    return ret;
 }
 ForStmt parseForStmt() {
+    ForStmt ret;
 
+    must(FOR);
+    if (code[header].kind != OBL) {
+        Expr *e = new Expr();
+        *e = parseExpr();
+
+        if(chk(SCOLON)) {
+            Expr *cond = new Expr(), *act = new Expr();
+
+            *cond = parseExpr();
+            must(SCOLON);
+            *act = parseExpr();
+
+            ret.init = e;
+            ret.cond = *cond;
+            ret.act = act;
+        } else {
+            ret.init = NULL;
+            ret.cond = *e;
+            ret.act = NULL;
+        }
+    }
+
+    ret.body = parseBlockStmt();
+
+    return ret;
 }
 IfStmt parseIfStmt() {
+    IfStmt ret;
+    ret._else = NULL;
 
-}
-BlockStmt parseBlockStmt() {
+    must(IF);
+    ret._if.push_back(std::make_pair(parseExpr(), parseBlockStmt()));
 
-}
-Stmt parseStmt() {
+    while(true) {
+        if(code[header].kind != ELSE) break;
 
+        forward();
+        if(chk(IF)) {
+            ret._if.push_back(std::make_pair(parseExpr(), parseBlockStmt()));
+        }
+        else {
+            ret._else = new BlockStmt();
+            *ret._else = parseBlockStmt();
+        }
+    }
+
+    return ret;
 }
 DefVar parseDefVar() {
+    DefVar ret;
+    ret.init = NULL;
+    ret.type = NULL;
 
+    must(VAR);
+    ret.name = must(WORD).str;
+
+    if(code[header].kind != ASS) {
+        ret.type = new Type();
+        *ret.type = parseType();
+    }
+    
+    if(chk(ASS)) {
+        ret.init = new Expr();
+        *ret.init = parseExpr();
+    }
+
+    return ret;
+}
+Stmt parseStmt() {
+    Stmt ret;
+
+    if(code[header].kind == VAR) {
+        DefVar *neo = new DefVar();
+        *neo = parseDefVar();
+
+        ret.kind = VAR;
+        ret.stmt = neo;
+    }
+    else if(code[header].kind == IF) {
+        IfStmt *neo = new IfStmt();
+        *neo = parseIfStmt();
+
+        ret.kind = IF;
+        ret.stmt = neo;
+    }
+    else if(code[header].kind == FOR) {
+        ForStmt *neo = new ForStmt();
+        *neo = parseForStmt();
+
+        ret.kind = FOR;
+        ret.stmt = neo;
+    }
+    else {
+        Expr *e = new Expr();
+        *e = parseExpr();
+
+        if(chk(ASS)) {
+            AssignStmt * neo = new AssignStmt();
+            *neo = (AssignStmt){.dst=*e, .src=parseExpr()};
+
+            ret.kind = ASS;
+            ret.stmt = neo;
+        }
+        else {
+            ret.kind = 0;
+            ret.stmt = e;
+        }
+    }
+    return ret;
 }
 DefClass parseDefClass() {
+    DefClass ret;
 
+    must(CLASS);
+    ret.name = must(WORD).str;
+    must(OBL);
+
+    while(code[header].kind != CBL || code[header].kind != SEP) {
+        Field field;
+
+        field.isPrivate = false;
+        if(chk(ADD)) {
+            field.isPrivate = false;
+        }
+        else if(chk(SUB)) {
+            field.isPrivate = true;
+        }
+        
+        field.name = must(WORD).str;
+        field.type = parseType();
+
+        must(SCOLON);
+
+        ret.field.push_back(field);
+    }
+
+    if(chk(SEP)) {
+        while(code[header].kind == CBL) {
+            Method method;
+
+            method.isPrivate = false;
+            if(chk(ADD))
+                method.isPrivate = false;
+            else if(chk(SUB))
+                method.isPrivate = true;
+
+            method.name = must(WORD).str;
+        
+            must(OBR);
+
+            while(code[header].kind != CBR) {
+                method.frame.push_back(std::make_pair(must(WORD).str, parseType()));
+                chk(COMMA);
+            }
+            must(CBR);
+            
+            method.body = parseBlockStmt();
+
+            ret.method.push_back(method);
+        }
+    }
+
+    must(CBL);
+
+    return ret;
 }
 DefInterface parseDefInterface() {
+    DefInterface ret;
 
+    must(INTERFACE);
+    ret.name = must(WORD).str;
+
+    must(OBR);
+
+    while(code[header].kind != CBR) {
+        IMember member;
+
+        member.isPrivate = false;
+        if(chk(ADD)) {
+            member.isPrivate = false;
+        }
+        else if(chk(SUB)) {
+            member.isPrivate = true;
+        }
+        
+        member.name = must(WORD).str;
+        must(OBR);
+        while(code[header].kind != CBR) {
+            member.frame.push_back(parseType());
+            chk(COMMA);
+        }
+        must(CBR);
+        must(SCOLON);
+    }
+
+    must(CBR);
+
+    return ret;
 }
 DefFunc parseDefFunc() {
+    DefFunc ret;
+    ret.ret = (Type){.kind=0};
 
+    must(FUNC);
+    ret.name = must(WORD).str;
+    must(OBR);
+    while(code[header].kind != CBR) {
+        ret.frame.push_back(std::make_pair(must(WORD).str, parseType()));
+        chk(COMMA);
+    }
+    must(CBR);
+
+    if(chk(ARROW)) {
+        ret.ret = parseType();
+    }
+
+    ret.body = parseBlockStmt();
+    return ret;
 }
 
 Program parseProgram() {
     Program ret;
 
     while(header < ::code.size()) {
-        if(chk(FUNC)) {
+        if(code[header].kind == FUNC) {
             DefFunc *neo = new DefFunc();
             *neo = parseDefFunc();
             ret.childs.push_back(std::make_pair(FUNC, neo));
         }
-        else if(chk(VAR)) {
+        else if(code[header].kind == VAR) {
             DefVar *neo = new DefVar();
             *neo = parseDefVar();
             ret.childs.push_back(std::make_pair(VAR, neo));
         }
-        else if(chk(CLASS)) {
+        else if(code[header].kind == CLASS) {
             DefClass *neo = new DefClass();
             *neo = parseDefClass();
             ret.childs.push_back(std::make_pair(CLASS, neo));
         }
-        else if(chk(INTERFACE)) {
+        else if(code[header].kind == INTERFACE) {
             DefInterface *neo = new DefInterface();
             *neo = parseDefInterface();
             ret.childs.push_back(std::make_pair(INTERFACE, neo));
         }
         else {
-            panicf("unexpected %s", kDict.sprint(code[header].kind));
+            panicUnexpectedToken();
         }
     }
+    return ret;
 }
 
-Program runRDP(std::vector<Token> code) {
+Program execRDP(std::vector<Token> code) {
     header = 0;
     ::code = code;
 
