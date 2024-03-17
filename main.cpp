@@ -6,7 +6,8 @@
 #include "parse.hpp"
 #include "addScolon.hpp"
 #include "RDP.hpp"
-#include "exec.hpp"
+#include "readBCode.hpp"
+#include "run.hpp"
 
 #define MAX_SOURCE_LENGTH 1000000
 
@@ -15,10 +16,12 @@ char buffer[MAX_SOURCE_LENGTH];
 void init() {
     initDict();
     initTaboo();
+    initRun();
 }
 char* readWholeFile(const char* path) {
     FILE *fp = fopen(path, "r");
     fread(buffer, sizeof(char), MAX_SOURCE_LENGTH, fp);
+    fclose(fp);
 
     return buffer;
 }
@@ -32,9 +35,12 @@ void printTokens(std::vector<Token> tokens) {
 int main() {
     init();
 
-    char *res = readWholeFile("input.lf");
-    std::vector<Token> tokens = parse(res);
-    Program prog = execRDP(tokens);
+//    char *res = readWholeFile("input.lf");
+//    std::vector<Token> tokens = parse(res);
+//    Program prog = execRDP(tokens);
 
+    std::vector<BCode> code = readBFile(readWholeFile("input.la"));
+    printBC(code);
+    printf("program ends with %d\n", run(code));
     return 0;
 }

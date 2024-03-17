@@ -1,13 +1,43 @@
-func main() {
-    var list = []num {1, 2, 3}
-    printf("%v\n", list)       // [1, 2, 3]
-    printf("%d\n", list[1])    // 2
-    printf("%d\n", list.len()) // 3
-    printf("%d\n", list.cap()) // 3
+class Node {
+    value num
+    next Node
+}
 
-    list.append(4)
-    printf("%v", list)         // [1,2,3,4] 
-    printf("%d\n", list[1])    // 2
-    printf("%d\n", list.len()) // 4
-    printf("%d\n", list.cap()) // 6
+class LinkedList {
+    begin Node
+    ---
+    append(value num) {
+        if self.begin is null {
+            self.begin = Node {
+                value: value,
+            }
+            return
+        }
+
+        var it = self.begin
+        for it.next is not null {
+            it = it.next
+        }
+
+        it.next = Node {
+            value: value,
+        }
+    }
+    print() {
+        var it = self.begin
+        for it is not null {
+            printf("%d\n", it.value)
+            it = it.next
+        }
+    }
+}
+
+func main() {
+    var list = LinkedList{}
+
+    list.append(1)
+    list.append(2)
+    list.append(3)
+
+    list.print()
 }

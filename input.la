@@ -1,0 +1,4 @@
+push imd 1
+push imd 2
+add
+end

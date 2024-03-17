@@ -54,6 +54,12 @@
         "unordered_map": "cpp",
         "variant": "cpp",
         "algorithm": "cpp",
-        "chrono": "cpp"
+        "chrono": "cpp",
+        "deque": "cpp",
+        "functional": "cpp",
+        "execution": "cpp",
+        "stack": "cpp",
+        "__assert": "cpp",
+        "__availability": "cpp"
     }
 }

@@ -1,0 +1,10 @@
+func main() {
+    var x = 1
+    var f = func [x] () -> int {
+        return x
+    }
+
+    printf("%d", f()) // 1
+    x = 2
+    printf("%d", f()) // 1
+}

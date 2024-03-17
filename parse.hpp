@@ -202,6 +202,8 @@ std::vector<Token> parse(const char* str) {
         }
     }
 
+    ret.push_back((Token){.kind=SCOLON});
+
     return ret;
 }
 

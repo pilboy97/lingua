@@ -36,6 +36,7 @@ void initTaboo() {
     taboo.push_back(OBL);
     taboo.push_back(ARROW);
     taboo.push_back(SEP);
+    taboo.push_back(COMMA);
     taboo.push_back(SCOLON);
 }
 
