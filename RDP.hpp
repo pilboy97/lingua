@@ -783,7 +783,7 @@ DefClass parseDefClass() {
     must(CLASS);
     ret.name = must(WORD).str;
     must(OBL);
-    
+
     while(header < code.size() && code[header].kind != CBL && code[header].kind != SEP) {
         Field field;
 
@@ -814,8 +814,7 @@ DefClass parseDefClass() {
                 method.isPrivate = true;
 
             method.name = must(WORD).str;
-            printf("name: %s", method.name);
-        
+            
             must(OBR);
             while(header < code.size() && code[header].kind != CBR) {
                 method.frame.push_back(std::make_pair(must(WORD).str, parseType()));

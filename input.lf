@@ -6,6 +6,13 @@ class Node {
 class LinkedList {
     begin Node
     ---
+    print() {
+        var it = self.begin
+        for it is not null {
+            printf("%d\n", it.value)
+            it = it.next
+        }
+    }
     append(value num) {
         if self.begin is null {
             self.begin = Node {
@@ -21,13 +28,6 @@ class LinkedList {
 
         it.next = Node {
             value: value,
-        }
-    }
-    print() {
-        var it = self.begin
-        for it is not null {
-            printf("%d\n", it.value)
-            it = it.next
         }
     }
 }
