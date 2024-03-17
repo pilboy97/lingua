@@ -61,5 +61,6 @@
         "stack": "cpp",
         "__assert": "cpp",
         "__availability": "cpp"
-    }
+    },
+    "cmake.configureOnOpen": true
 }

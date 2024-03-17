@@ -17,15 +17,15 @@ void forward() {
     header++;
 }
 bool chk(int kind) {
-    if(header < code.size()) {
-        if(code[header].kind == kind) {
-            forward();
-            return true;
-        }
-        else {
-            return false;
-        }
-    } 
+    if(header >= code.size() || header < 0) panicf("wrong header %d", header);
+
+    if(code[header].kind == kind) {
+        forward();
+        return true;
+    }
+    else {
+        return false;
+    }
     return false;
 }
 Token must(int kind) {
@@ -41,30 +41,15 @@ struct Type {
     int kind;
     const char *name;
     std::vector<Type> frame;
-
-    ~Type() {
-        delete name;
-    }
 };
 
 struct Factor {
     int kind;
     void *ptr;
-
-    void del();
-
-    ~Factor() {
-        del();
-    }
 };
 struct Expr12 {
     Factor f;
     std::vector<std::pair<TokenCode, void*> > childs;
-
-    void del();
-    ~Expr12() {
-        del();
-    }
 };
 struct Expr11 {
     Expr12 child;
@@ -107,10 +92,6 @@ struct Expr {
 struct Expr_1 { // src = dst
     Expr *src;
     Expr dst;
-
-    ~Expr_1() {
-        delete src;
-    }
 };
 struct FCall {
     std::vector<Expr> list;
@@ -120,12 +101,6 @@ struct Idx {
 };
 struct InitList {
     std::vector<std::pair<const char*, Expr> > list;
-
-    ~InitList() {
-        for(int i = 0;i < list.size();i++) {
-            delete list[i].first;
-        }
-    }
 };
 struct Number {
     long long value;
@@ -138,12 +113,9 @@ struct ByteNumber {
 };
 struct Word {
     const char *word;
-    ~Word() {
-        delete word;
-    }
 };
 struct LiteralString {
-    int idx;
+    const char *str;
 };
 struct LiteralArray {
     Type type;
@@ -152,21 +124,12 @@ struct LiteralArray {
 struct LiteralObject {
     Type type;
     std::vector<std::pair<const char*, Expr> > value;
-
-    ~LiteralObject() {
-        for(int i = 0;i < value.size();i++) {
-            delete value[i].first;
-        }
-    }
 };
 struct Stmt {
     int kind;
     void *stmt;
 
     void del();
-    ~Stmt() {
-        del();
-    }
 };
 struct BlockStmt {
     std::vector<Stmt> childs;
@@ -174,10 +137,6 @@ struct BlockStmt {
 struct IfStmt {
     std::vector<std::pair<Expr, BlockStmt> > _if;
     BlockStmt *_else;
-
-    ~IfStmt() {
-        delete _else;
-    }
 };
 struct ForStmt {
     Expr_1 *init;
@@ -185,29 +144,14 @@ struct ForStmt {
     Expr_1 *act;
 
     BlockStmt body;
-
-    ~ForStmt() {
-        delete init;
-        delete act;
-    }
 };
 struct RetStmt {
     Expr *expr;
-
-    ~RetStmt() {
-        delete expr;
-    }
 };
 struct DefVar {
     const char *name;
     Type *type;
     Expr *init;
-
-    ~DefVar() {
-        delete name;
-        delete type;
-        delete init;
-    }
 };
 struct Method {
     bool isPrivate;
@@ -215,49 +159,26 @@ struct Method {
     std::vector<std::pair<const char *, Type> > frame;
     BlockStmt body;
     Type ret;
-
-    ~Method() {
-        delete name;
-        for(int i = 0;i < frame.size();i++) {
-            delete frame[i].first;
-        }
-    }
 };
 struct Field {
     bool isPrivate;
     const char *name;
     Type type;
-
-    ~Field() {
-        delete name;
-    }
 };
 struct IMember {
     bool isPrivate;
     const char *name;
     std::vector<Type> frame;
     Type ret;
-
-    ~IMember() {
-        delete name;
-    }
 };
 struct DefInterface {
     const char *name;
     std::vector<IMember> method;
-
-    ~DefInterface() {
-        delete name;
-    }
 };
 struct DefClass {
     const char *name;
     std::vector<Field> field;
     std::vector<Method> method;
-
-    ~DefClass() {
-        delete name;
-    }
 };
 struct DefFunc {
     const char *name;
@@ -265,35 +186,15 @@ struct DefFunc {
     std::vector<const char * > captured;
     Type ret;
     BlockStmt body;
-
-    ~DefFunc() {
-        delete name;
-        for(int i = 0;i < frame.size();i++) {
-            delete frame[i].first;
-        }
-        for(int i = 0;i < captured.size();i++) {
-            delete captured[i];
-        }
-    }
 };
 struct Program {
     std::vector<std::pair<int, void*> > childs;
-    std::vector<const char *> lstr;
-    std::vector<DefFunc> fn;
-
-    void del();
-    ~Program() {
-        del();
-    }
 };
 
 FCall parseFCall();
 Idx parseIdx();
 InitList parseInitList();
 Expr parseExpr();
-
-static std::vector<const char *> lstr;
-static std::vector<DefFunc> fn;
 
 Type parseType() {
     Type ret;
@@ -398,8 +299,7 @@ Factor parseFactor() {
     }
     else if(code[header].kind == LSTR) {
         LiteralString *neo = new LiteralString();
-        neo->idx = lstr.size();
-        lstr.push_back(code[header++].str);
+        neo->str = code[header].str;
 
         return (Factor) {.kind=LSTR, .ptr=neo};
     }
@@ -435,12 +335,10 @@ Factor parseFactor() {
     else if(chk(FUNC)) {
         header--;
 
-        int *idx = new int();
-        *idx = fn.size();
-        DefFunc neo = parseLambda();
-        fn.push_back(neo);
+        DefFunc *neo = new DefFunc();
+        *neo =  parseLambda();
 
-        return (Factor) {.kind=FUNC, .ptr=idx};
+        return (Factor) {.kind=FUNC, .ptr=neo};
     }
     else if(chk(NIL)) {
         return (Factor){.kind=NIL};
@@ -704,7 +602,7 @@ InitList parseInitList() {
 
     must(OBL);
 
-    while(code[header].kind != CBL) {
+    while(header < code.size() && code[header].kind != CBL) {
         const char *name = must(WORD).str;
         must(COLON);
         Expr e = parseExpr();
@@ -722,7 +620,7 @@ FCall parseFCall() {
 
     must(OBR);
 
-    while(code[header].kind != CBR) {
+    while(header < code.size() && code[header].kind != CBR) {
         ret.list.push_back(parseExpr());
         chk(COMMA);
     }
@@ -885,8 +783,8 @@ DefClass parseDefClass() {
     must(CLASS);
     ret.name = must(WORD).str;
     must(OBL);
-
-    while(code[header].kind != CBL && code[header].kind != SEP) {
+    
+    while(header < code.size() && code[header].kind != CBL && code[header].kind != SEP) {
         Field field;
 
         field.isPrivate = false;
@@ -906,7 +804,7 @@ DefClass parseDefClass() {
     }
 
     if(chk(SEP)) {
-        while(code[header].kind != CBL) {
+        while(header < code.size() && code[header].kind != CBL) {
             Method method;
 
             method.isPrivate = false;
@@ -916,10 +814,10 @@ DefClass parseDefClass() {
                 method.isPrivate = true;
 
             method.name = must(WORD).str;
+            printf("name: %s", method.name);
         
             must(OBR);
-
-            while(code[header].kind != CBR) {
+            while(header < code.size() && code[header].kind != CBR) {
                 method.frame.push_back(std::make_pair(must(WORD).str, parseType()));
                 chk(COMMA);
             }
@@ -957,7 +855,7 @@ DefInterface parseDefInterface() {
         
         member.name = must(WORD).str;
         must(OBR);
-        while(code[header].kind != CBR) {
+        while(header < code.size() && code[header].kind != CBR) {
             member.frame.push_back(parseType());
             chk(COMMA);
         }
@@ -976,7 +874,7 @@ DefFunc parseDefFunc() {
     must(FUNC);
     ret.name = must(WORD).str;
     must(OBR);
-    while(code[header].kind != CBR) {
+    while(header < code.size() && code[header].kind != CBR) {
         ret.frame.push_back(std::make_pair(must(WORD).str, parseType()));
         chk(COMMA);
     }
@@ -1019,9 +917,6 @@ Program parseProgram() {
             panicUnexpectedToken();
         }
     }
-
-    ret.lstr = lstr;
-    ret.fn = fn;
     
     return ret;
 }
@@ -1031,127 +926,5 @@ Program execRDP(std::vector<Token> code) {
     ::code = code;
 
     return parseProgram();
-}
-
-void Stmt::del() {
-    DefVar *ptr1;
-    IfStmt *ptr2;
-    ForStmt *ptr3;
-    RetStmt *ptr4; 
-    Expr_1 *ptr5;
-    switch (this->kind) {
-    case VAR:
-        ptr1 = (DefVar*)this->stmt;
-        delete ptr1;
-        break;
-    case IF:
-        ptr2 = (IfStmt*)this->stmt;
-        delete ptr2;
-        break;
-    case FOR:
-        ptr3 = (ForStmt*)this->stmt;
-        delete ptr3;
-        break;
-    case RETURN:
-        ptr4 = (RetStmt*)this->stmt;
-        delete ptr4;
-        break;
-    default:
-        ptr5 = (Expr_1*)this->stmt;
-        delete ptr5;
-    }
-}
-void Expr12::del() {
-    for(int i = 0;i < this->childs.size();i++) {
-        FCall *ptr; 
-        Idx *ptr2;
-        InitList *ptr3;
-        Word *ptr4;
-
-        auto duo = this->childs[i];
-        switch (duo.first) {
-        case OBR:
-            ptr = (FCall*) duo.second;
-            delete ptr;
-            break;
-        case OSB:
-            ptr2 = (Idx*) duo.second;
-            delete ptr2;
-            break;
-        case OBL:
-            ptr3 = (InitList*) duo.second;
-            delete ptr3;
-            break;
-        case WORD:
-            ptr4 = (Word*) duo.second;
-            delete ptr4;
-        }
-    }
-}
-void Factor::del() {
-    Expr *ptr;
-    Number *ptr2;
-    UNumber *ptr3;
-    ByteNumber *ptr4; 
-    LiteralString *ptr5;
-    Word *ptr6;
-    LiteralArray *ptr7;
-    int *ptr8;
-
-    switch(this->kind) {
-    case OBR:
-        ptr = (Expr*) this->ptr;
-        delete ptr;
-        break;
-    case LNUM: 
-        ptr2 = (Number*) this->ptr;
-        delete ptr2;
-        break;
-    case LUNUM: 
-        ptr3 = (UNumber*) this->ptr;
-        delete ptr3;
-        break;
-    case LBYTE:
-        ptr4 = (ByteNumber*) this->ptr;
-        delete ptr4;
-        break;
-    case LSTR:
-        ptr5 = (LiteralString*) this->ptr;
-        delete ptr5;
-        break;
-    case WORD:
-        ptr6 = (Word*) this->ptr;
-        delete ptr6;
-        break;
-    case OSB:
-        ptr7 = (LiteralArray*) this->ptr;
-        delete ptr7;
-        break;
-    case FUNC:
-        ptr8 = (int*) this->ptr;
-        delete ptr8;
-    }
-}
-void Program::del() {
-    for(int i = 0;i < this->childs.size();i++) {
-        DefFunc *ptr;
-        DefClass *ptr2;
-        DefInterface *ptr3;
-
-        auto duo = this->childs[i];
-        switch(duo.first) {
-        case FUNC:
-            ptr = (DefFunc*)duo.second;
-            delete ptr;
-            break;
-        case CLASS:
-            ptr2 = (DefClass*)duo.second;
-            delete ptr2;
-            break;
-        case INTERFACE:
-            ptr3 = (DefInterface*) duo.second;
-            delete ptr3;
-        }
-    }
 }
 #endif
