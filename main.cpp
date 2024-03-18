@@ -36,6 +36,7 @@ int main() {
     char *res = readWholeFile("input.lf");
     std::vector<Token> tokens = parse(res);
     Program prog = execRDP(tokens);
+
     run(prog);
 
     return 0;

@@ -128,8 +128,6 @@ struct LiteralObject {
 struct Stmt {
     int kind;
     void *stmt;
-
-    void del();
 };
 struct BlockStmt {
     std::vector<Stmt> childs;
@@ -214,10 +212,10 @@ Type parseType() {
     }
     else if(chk(FUNC)) {
         ret.kind = FUNC;
-        ret.frame.push_back((Type){.kind=0});
+        ret.frame.push_back(Type{0});
 
         must(OBR);
-        while(code[header].kind != CBR) {
+        while (header < code.size() && code[header].kind != CBR) {
             ret.frame.push_back(parseType());
             chk(COMMA);
         }
@@ -245,18 +243,20 @@ DefFunc parseLambda() {
 
     must(FUNC);
     if(chk(OSB)) {
-        while(code[header].kind != CSB) {
+        while(header < code.size() && code[header].kind != CSB) {
             ret.captured.push_back(must(WORD).str);
             chk(COMMA);
         }
         must(CSB);
     }
 
-    ret.frame.push_back(std::make_pair("", (Type){.kind=0}));
+    ret.frame.push_back(std::make_pair("", Type{0}));
 
     must(OBR);
-    while(code[header].kind != CBR) {
-        ret.frame.push_back(std::make_pair(must(WORD).str, parseType()));
+    while(header < code.size() && code[header].kind != CBR) {
+        const char* name = must(WORD).str;
+        Type type = parseType();
+        ret.frame.push_back(std::make_pair(name, type));
         chk(COMMA);
     }
     must(CBR);
@@ -277,40 +277,41 @@ Factor parseFactor() {
 
         must(CBR);
 
-        return (Factor) {.kind=OBR, .ptr=neo};
+        return Factor {OBR, neo};
     }
     else if(code[header].kind == LNUM) {
         Number *neo = new Number();
         neo->value = code[header++].value;
 
-        return (Factor) {.kind=LNUM, .ptr=neo};
+        return Factor {LNUM, neo};
     }
     else if(code[header].kind == LUNUM) {
         UNumber *neo = new UNumber();
         neo->value = code[header++].value;
 
-        return (Factor) {.kind=LUNUM, .ptr=neo};
+        return Factor {LUNUM, neo};
     }
     else if(code[header].kind == LBYTE) {
         ByteNumber *neo = new ByteNumber();
         neo->value = code[header++].value;
 
-        return (Factor) {.kind=LBYTE, .ptr=neo};
+        return Factor {LBYTE, neo};
     }
     else if(code[header].kind == LSTR) {
         LiteralString *neo = new LiteralString();
-        neo->str = code[header].str;
+        neo->str = code[header++].str;
 
-        return (Factor) {.kind=LSTR, .ptr=neo};
+        return Factor {LSTR, neo};
     }
     else if(code[header].kind == WORD) {
         Word *neo = new Word();
         neo->word = code[header++].str;
 
-        return (Factor) {.kind=WORD, .ptr=neo};
+        return Factor {WORD, neo};
     }
     else if(code[header].kind == OSB) {
         // array literal
+
         forward();
         must(CSB);
 
@@ -318,19 +319,19 @@ Factor parseFactor() {
         neo->type = parseType();
 
         must(OBL);
-        while(code[header].kind != CBL) {
+        while(header < code.size() && code[header].kind != CBL) {
             neo->elem.push_back(parseExpr());
             chk(COMMA);
         }
         must(CBL);
 
-        return (Factor) {.kind=OSB, .ptr = neo};
+        return Factor{OSB, neo};
     }
     else if(chk(LTRUE)) {
-        return (Factor) {.kind=LTRUE, .ptr=NULL};
+        return Factor {LTRUE, NULL};
     }
     else if(chk(LFALSE)) {
-        return (Factor) {.kind=LFALSE, .ptr=NULL};
+        return Factor {LFALSE, NULL};
     }
     else if(chk(FUNC)) {
         header--;
@@ -338,16 +339,16 @@ Factor parseFactor() {
         DefFunc *neo = new DefFunc();
         *neo =  parseLambda();
 
-        return (Factor) {.kind=FUNC, .ptr=neo};
+        return Factor {FUNC, neo};
     }
     else if(chk(NIL)) {
-        return (Factor){.kind=NIL};
+        return Factor{NIL, NULL};
     }
     else {
         panicUnexpectedToken();
     }
 
-    return (Factor){};
+    return Factor{};
 }
 Expr12 parseExpr12() {
     Expr12 ret;
@@ -417,10 +418,10 @@ Expr10 parseExpr10() {
     while(true) {
         if(chk(IS)) {
             if(chk(NIL)) {
-                ret.oper.push_back(std::make_pair(NIL, (Type){}));
+                ret.oper.push_back(std::make_pair(NIL, Type{}));
             } else if(chk(LNOT)) {
                 must(NIL);
-                ret.oper.push_back(std::make_pair(LNOT, (Type){}));
+                ret.oper.push_back(std::make_pair(LNOT, Type{}));
             } else {
                 ret.oper.push_back(std::make_pair(IS, parseType()));
             }
@@ -646,7 +647,7 @@ BlockStmt parseBlockStmt() {
 
     must(OBL);
 
-    while(code[header].kind != CBL) {
+    while(header < code.size() && code[header].kind != CBL) {
         ret.childs.push_back(parseStmt());
         must(SCOLON);
     }
@@ -659,7 +660,7 @@ ForStmt parseForStmt() {
     ForStmt ret;
 
     must(FOR);
-    if (code[header].kind != OBL) {
+    if (header < code.size() && code[header].kind != OBL) {
         Expr_1 *e = new Expr_1();
         *e = parseExpr_1();
 
@@ -689,14 +690,19 @@ IfStmt parseIfStmt() {
     ret._else = NULL;
 
     must(IF);
-    ret._if.push_back(std::make_pair(parseExpr(), parseBlockStmt()));
+    Expr cond = parseExpr();
+    BlockStmt block = parseBlockStmt();
+
+    ret._if.push_back(std::make_pair(cond, block));
 
     while(true) {
         if(code[header].kind != ELSE) break;
 
         forward();
         if(chk(IF)) {
-            ret._if.push_back(std::make_pair(parseExpr(), parseBlockStmt()));
+            Expr cond = parseExpr();
+            BlockStmt block = parseBlockStmt();
+            ret._if.push_back(std::make_pair(cond, block));
         }
         else {
             ret._else = new BlockStmt();
@@ -714,7 +720,7 @@ DefVar parseDefVar() {
     must(VAR);
     ret.name = must(WORD).str;
 
-    if(code[header].kind != ASS) {
+    if(header < code.size() && code[header].kind != ASS) {
         ret.type = new Type();
         *ret.type = parseType();
     }
@@ -759,7 +765,7 @@ Stmt parseStmt() {
     else if(chk(RETURN)) {
         RetStmt *neo = new RetStmt();
         neo->expr = NULL;
-        if (code[header].kind != SCOLON) {
+        if (header < code.size() && code[header].kind != SCOLON) {
             Expr *e = new Expr();
             *e = parseExpr();
             neo->expr = e;
@@ -817,7 +823,9 @@ DefClass parseDefClass() {
             
             must(OBR);
             while(header < code.size() && code[header].kind != CBR) {
-                method.frame.push_back(std::make_pair(must(WORD).str, parseType()));
+                const char* name = must(WORD).str;
+                Type type = parseType();
+                method.frame.push_back(std::make_pair(name, type));
                 chk(COMMA);
             }
             must(CBR);
@@ -841,7 +849,7 @@ DefInterface parseDefInterface() {
 
     must(OBL);
 
-    while(code[header].kind != CBL) {
+    while(header < code.size() && code[header].kind != CBL) {
         IMember member;
 
         member.isPrivate = false;
@@ -868,13 +876,16 @@ DefInterface parseDefInterface() {
 }
 DefFunc parseDefFunc() {
     DefFunc ret;
-    ret.ret = (Type){.kind=0};
+    ret.ret = Type{0};
 
     must(FUNC);
     ret.name = must(WORD).str;
     must(OBR);
     while(header < code.size() && code[header].kind != CBR) {
-        ret.frame.push_back(std::make_pair(must(WORD).str, parseType()));
+        const char* name = must(WORD).str;
+        Type type = parseType();
+
+        ret.frame.push_back(std::make_pair(name, type));
         chk(COMMA);
     }
     must(CBR);
@@ -890,7 +901,7 @@ DefFunc parseDefFunc() {
 Program parseProgram() {
     Program ret;
 
-    while(header < ::code.size()) {
+    while(header < code.size() && header < ::code.size()) {
         if(code[header].kind == SCOLON) {
             header++;
         }

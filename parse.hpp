@@ -18,10 +18,11 @@ void parsePanic(int line, int character, const char *msg) {
     panicf("at line %d, %d: %s", line, character, msg);
 }
 char *substr(const char *str, int begin, int end) {
-    char *ret = (char *) malloc(sizeof(char) * (end - begin));
+    char *ret = (char *) malloc(sizeof(char) * (end - begin + 1));
     for(int i = begin; i < end; i++) {
         ret[i - begin] = str[i];
     }
+    ret[end - begin] = '\0';
     return ret;
 }
 bool hasPrefix(const char *pre, const char *str)
@@ -96,7 +97,7 @@ std::vector<Token> parse(const char* str) {
                 if(ret.size() != 0) {
                     auto last = ret.back();
                     if(!isTaboo(last.kind)) {
-                        ret.push_back((Token){.kind=SCOLON, .str=";", .line=line, .col=i-sp});
+                        ret.push_back(Token{SCOLON, ";", 0, line, i-sp});
                     }
                 }
                 i++;
@@ -111,7 +112,7 @@ std::vector<Token> parse(const char* str) {
         else if(str[i] >= '0' && str[i] <= '9') {
             // literal number
 
-            ret.push_back((Token){.kind=LNUM, .value=parseNumber(str, i, 32), .line=line, .col=i-sp});
+            ret.push_back(Token{LNUM, NULL, parseNumber(str, i, 32), line, i-sp});
         }
         else if(str[i] == '\\') {
             // maybe unsigned number literal or byte literal
@@ -121,15 +122,17 @@ std::vector<Token> parse(const char* str) {
             }
             if(str[i] == 'u' || str[i] == 'U') {
                 // literal unsigned number
+                
                 i++;
-                Token t = {.kind=LUNUM, .value = parseNumber(str, i, 32), .line=line, .col=i-sp-1};
+                Token t = {LUNUM, NULL, parseNumber(str, i, 32), line, i-sp-1};
 
                 ret.push_back(t);
             }
             else if(str[i] == 'b' || str[i] == 'B') {
                 //literal byte number
+
                 i++;
-                Token t = {.kind=LBYTE, .value = parseNumber(str, i, 2), .line=line, .col=i-sp-1};
+                Token t = {LBYTE, NULL, parseNumber(str, i, 2), line, i-sp-1};
 
                 ret.push_back(t);
             }
@@ -157,7 +160,7 @@ std::vector<Token> parse(const char* str) {
             end = i;
             i++;
 
-            ret.push_back((Token) {.kind=LSTR, .str= substr(str, begin, end), .line=line, .col=begin-sp});
+            ret.push_back(Token{LSTR, substr(str, begin, end), 0, line, begin-sp});
         }
         else if(str[i] == '_' || (str[i] >= 'a' && str[i] <= 'z') || (str[i] >= 'A' && str[i] <= 'Z')) {
             // maybe word or keyword
@@ -174,10 +177,10 @@ std::vector<Token> parse(const char* str) {
 
             int v = kDict.get(word);
             if(v != -1) {
-                ret.push_back((Token){.kind=v, .str=word, .line=line, .col=begin-sp});
+                ret.push_back(Token{v, word, 0, line, begin-sp});
             }
             else {
-                ret.push_back((Token){.kind=WORD, .str=word, .line=line, .col=begin-sp});
+                ret.push_back(Token{WORD, word, 0, line, begin-sp});
             }
         }
         else {
@@ -192,7 +195,7 @@ std::vector<Token> parse(const char* str) {
                     if(v != -1) {
                         found = true;
                         i += length;
-                        ret.push_back((Token){.kind=v, .str=s, .line=line, .col=i-length-sp});
+                        ret.push_back(Token{ v, s, 0, line, i - length - sp });
                     }
                 }
             }
@@ -202,7 +205,7 @@ std::vector<Token> parse(const char* str) {
         }
     }
 
-    ret.push_back((Token){.kind=SCOLON});
+    ret.push_back(Token{SCOLON});
 
     return ret;
 }

@@ -10,7 +10,7 @@
 
 void panic(const char* msg) {
     printf("%s\n", msg);
-    exit(0);
+    exit(1);
 }
 void panicf(const char* msg, ...) {
     va_list argptr;
@@ -52,7 +52,7 @@ void panicf(const char* msg, ...) {
         }
     }
     puts("");
-    exit(0);
+    exit(1);
 }
 
 #endif
