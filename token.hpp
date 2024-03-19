@@ -6,6 +6,7 @@
 struct Token {
     int kind;
     const char *str;
+    double real;
     unsigned long long value;
     int line, col;
 };

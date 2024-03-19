@@ -40,7 +40,7 @@ Token must(int kind) {
 struct Type {
     int kind;
     const char *name;
-    std::vector<Type> frame;
+    std::vector<Type> add;
 };
 
 struct Factor {
@@ -100,10 +100,14 @@ struct Idx {
     Expr id;
 };
 struct InitList {
+    const char *tname;
     std::vector<std::pair<const char*, Expr> > list;
 };
 struct Number {
     long long value;
+};
+struct Real {
+    double value;
 };
 struct UNumber { 
     unsigned long long value;
@@ -207,28 +211,31 @@ Type parseType() {
     else if(chk(BYTE)) {
         ret.kind = BYTE;
     }
+    else if(chk(REAL)) {
+        ret.kind = REAL;
+    }
     else if(chk(BOOL)) {
         ret.kind = BOOL;
     }
     else if(chk(FUNC)) {
         ret.kind = FUNC;
-        ret.frame.push_back(Type{0});
+        ret.add.push_back(Type{0});
 
         must(OBR);
         while (header < code.size() && code[header].kind != CBR) {
-            ret.frame.push_back(parseType());
+            ret.add.push_back(parseType());
             chk(COMMA);
         }
         must(CBR);
         if(chk(ARROW)) {
-            ret.frame.front() = parseType();
+            ret.add.front() = parseType();
         }
     }
     else if(chk(OSB)){
         ret.kind = OSB;
         must(CSB);
 
-        ret.frame.push_back(parseType());
+        ret.add.push_back(parseType());
     }
     else {
         ret.kind = WORD;
@@ -297,6 +304,12 @@ Factor parseFactor() {
 
         return Factor {LBYTE, neo};
     }
+    else if(code[header].kind == LREAL) {
+        Real *neo = new Real();
+        neo->value = code[header++].real;
+
+        return Factor {LBYTE, neo};
+    }
     else if(code[header].kind == LSTR) {
         LiteralString *neo = new LiteralString();
         neo->str = code[header++].str;
@@ -307,7 +320,17 @@ Factor parseFactor() {
         Word *neo = new Word();
         neo->word = code[header++].str;
 
-        return Factor {WORD, neo};
+        if(chk(OBL)) {
+            InitList *p = new InitList();
+            *p = parseInitList();
+            p->tname = neo->word;
+
+            return Factor{OBL, p};
+        }
+        else {
+            return Factor {WORD, neo};
+        }
+
     }
     else if(code[header].kind == OSB) {
         // array literal
@@ -373,19 +396,12 @@ Expr12 parseExpr12() {
             *idx = parseIdx();
             ret.childs.push_back(std::make_pair(OSB, idx));
         }
-        else if(code[header].kind == OBL) {
-            stop = false;
-
-            InitList *list = new InitList();
-            *list = parseInitList();
-            ret.childs.push_back(std::make_pair(OBL, list));
-        }
         else if(chk(DOT)) {
             stop = false;
 
             Word *neo = new Word();
             neo->word = must(WORD).str;
-            ret.childs.push_back(std::make_pair(WORD, neo));
+            ret.childs.push_back(std::make_pair(DOT, neo));
         }
     } while(!stop);
 
@@ -419,10 +435,14 @@ Expr10 parseExpr10() {
         if(chk(IS)) {
             if(chk(NIL)) {
                 ret.oper.push_back(std::make_pair(NIL, Type{}));
-            } else if(chk(LNOT)) {
-                must(NIL);
-                ret.oper.push_back(std::make_pair(LNOT, Type{}));
-            } else {
+            } 
+            else if(chk(LNOT)) {
+                if(chk(NIL))
+                    ret.oper.push_back(std::make_pair(VOID, Type{}));
+                else
+                    ret.oper.push_back(std::make_pair(LNOT, parseType()));
+            }
+            else {
                 ret.oper.push_back(std::make_pair(IS, parseType()));
             }
         }
@@ -567,7 +587,7 @@ Expr1 parseExpr1() {
     ret.childs.push_back(parseExpr2());
 
     while(true) {
-        if(chk(AND)) {
+        if(chk(LAND)) {
             ret.childs.push_back(parseExpr2());
         }
         else break;
@@ -580,7 +600,7 @@ Expr parseExpr() {
     ret.childs.push_back(parseExpr1());
 
     while(true) {
-        if(chk(OR)) {
+        if(chk(LOR)) {
             ret.childs.push_back(parseExpr1());
         }
         else break;
@@ -740,6 +760,13 @@ Stmt parseStmt() {
         *neo = parseDefVar();
 
         ret.kind = VAR;
+        ret.stmt = neo;
+    }
+    else if(code[header].kind == OBL) {
+        BlockStmt *neo = new BlockStmt();
+        *neo = parseBlockStmt();
+
+        ret.kind = OBL;
         ret.stmt = neo;
     }
     else if(code[header].kind == IF) {

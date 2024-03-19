@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <math.h>
 
 #include "addScolon.hpp"
 #include "panic.hpp"
@@ -25,9 +26,19 @@ char *substr(const char *str, int begin, int end) {
     ret[end - begin] = '\0';
     return ret;
 }
-bool hasPrefix(const char *pre, const char *str)
-{
+bool hasPrefix(const char *pre, const char *str){
     return strncmp(pre, str, strlen(pre)) == 0;
+}
+double makeReal(unsigned long long x, unsigned long long y) {
+    double a,b;
+    a = x;
+    b = y;
+
+    while(1.0 < b) {
+        b /= 10;
+    }
+
+    return a + b;
 }
 unsigned long long parseNumber(const char* str, int &header, int length) {
     //parse number that has less than 'length' digits
@@ -97,7 +108,7 @@ std::vector<Token> parse(const char* str) {
                 if(ret.size() != 0) {
                     auto last = ret.back();
                     if(!isTaboo(last.kind)) {
-                        ret.push_back(Token{SCOLON, ";", 0, line, i-sp});
+                        ret.push_back(Token{SCOLON, ";", 0, 0, line, i-sp});
                     }
                 }
                 i++;
@@ -111,8 +122,13 @@ std::vector<Token> parse(const char* str) {
         }
         else if(str[i] >= '0' && str[i] <= '9') {
             // literal number
-
-            ret.push_back(Token{LNUM, NULL, parseNumber(str, i, 32), line, i-sp});
+            unsigned long long x = parseNumber(str, i, 32);
+            if(i < len && str[i] == '.'){
+                unsigned long long y = parseNumber(str, i, 32);
+                ret.push_back(Token{LREAL, NULL, makeReal(x, y), 0, line, i - sp});
+            }
+            else
+                ret.push_back(Token{LNUM, NULL, 0, x, line, i-sp});
         }
         else if(str[i] == '\\') {
             // maybe unsigned number literal or byte literal
@@ -124,7 +140,7 @@ std::vector<Token> parse(const char* str) {
                 // literal unsigned number
                 
                 i++;
-                Token t = {LUNUM, NULL, parseNumber(str, i, 32), line, i-sp-1};
+                Token t = {LUNUM, NULL, 0, parseNumber(str, i, 32), line, i-sp-1};
 
                 ret.push_back(t);
             }
@@ -132,7 +148,7 @@ std::vector<Token> parse(const char* str) {
                 //literal byte number
 
                 i++;
-                Token t = {LBYTE, NULL, parseNumber(str, i, 2), line, i-sp-1};
+                Token t = {LBYTE, NULL, 0, parseNumber(str, i, 2), line, i-sp-1};
 
                 ret.push_back(t);
             }
@@ -160,7 +176,7 @@ std::vector<Token> parse(const char* str) {
             end = i;
             i++;
 
-            ret.push_back(Token{LSTR, substr(str, begin, end), 0, line, begin-sp});
+            ret.push_back(Token{LSTR, substr(str, begin, end), 0, 0, line, begin-sp});
         }
         else if(str[i] == '_' || (str[i] >= 'a' && str[i] <= 'z') || (str[i] >= 'A' && str[i] <= 'Z')) {
             // maybe word or keyword
@@ -177,10 +193,10 @@ std::vector<Token> parse(const char* str) {
 
             int v = kDict.get(word);
             if(v != -1) {
-                ret.push_back(Token{v, word, 0, line, begin-sp});
+                ret.push_back(Token{v, word, 0, 0, line, begin-sp});
             }
             else {
-                ret.push_back(Token{WORD, word, 0, line, begin-sp});
+                ret.push_back(Token{WORD, word, 0, 0, line, begin-sp});
             }
         }
         else {
@@ -195,7 +211,7 @@ std::vector<Token> parse(const char* str) {
                     if(v != -1) {
                         found = true;
                         i += length;
-                        ret.push_back(Token{ v, s, 0, line, i - length - sp });
+                        ret.push_back(Token{ v, s, 0, 0, line, i - length - sp });
                     }
                 }
             }
