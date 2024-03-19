@@ -18,8 +18,9 @@ void init() {
 }
 char* readWholeFile(const char* path) {
     FILE *fp = fopen(path, "r");
-    fread(buffer, sizeof(char), MAX_SOURCE_LENGTH, fp);
+    int size = fread(buffer, sizeof(char), MAX_SOURCE_LENGTH, fp);
     fclose(fp);
+    buffer[size] = '\0';
 
     return buffer;
 }

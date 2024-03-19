@@ -308,7 +308,7 @@ Factor parseFactor() {
         Real *neo = new Real();
         neo->value = code[header++].real;
 
-        return Factor {LBYTE, neo};
+        return Factor {LREAL, neo};
     }
     else if(code[header].kind == LSTR) {
         LiteralString *neo = new LiteralString();
@@ -321,6 +321,7 @@ Factor parseFactor() {
         neo->word = code[header++].str;
 
         if(chk(OBL)) {
+            header--;
             InitList *p = new InitList();
             *p = parseInitList();
             p->tname = neo->word;

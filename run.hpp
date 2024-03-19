@@ -23,9 +23,12 @@ struct Var {
 	ll ptr;
 };
 struct Frame {
+	Type rtype;
+	Pointer RET;
 	std::vector<std::vector<Var>> vars;
 };
 struct Object {
+	int cnt;
 	int kind;
 	void* ptr;
 };
@@ -41,15 +44,21 @@ struct Instance {
 	DefClass *df;
 	std::vector<std::pair<const char *, ll>> fields;
 };
+struct NFunc {
+	const char* name;
+	Type rtype;
+	std::vector<Type> frame;
+};
 struct Closure {
+	NFunc* nf;
 	DefFunc fn;
 	std::vector<Pointer> cap;
 };
 struct Proc {
 	ll SP;
 	ll ESP;
-	Pointer RET;
-	Type Rtype;
+	ll GP;
+	std::vector<Var> Global;
 	std::vector<Object> org;
 	std::vector<ll> mem;
 	std::stack<Frame> STACK;
@@ -74,6 +83,7 @@ Type tNum = Type{NUM};
 Type tUNum = Type{UNUM};
 Type tByte = Type{BYTE};
 Type tReal = Type{REAL};
+Type tStr = Type{ OSB,"",{tByte} };
 
 bool isNull(Pointer ptr);
 
@@ -83,6 +93,7 @@ ll hAlloc(Object o);
 ll sAlloc(int size);
 Object& hAccess(ll ptr);
 ll& sAccess(ll ptr);
+ll& gAccess(ll ptr);
 
 bool isSameType(Type x, Type y);
 bool isAssignable(Type dst, Type src);
@@ -102,15 +113,18 @@ void runDefVar(DefVar df);
 
 Pointer runFCall(Pointer p, FCall arg);
 
-void destroy(Var v);
+void point(Pointer ptr);
+void destroy(Pointer v);
 void destroyArray(Array arr);
 void destroyClosure(Closure cl);
 void destroyInstance(Instance ins);
 void clearFrame();
 
 bool isExists(const char* name);
+bool isGExists(const char* name);
 Pointer getVar(const char* name);
 void newVar(Var dptr);
+void newGVar(Var dptr);
 Var makeVar(const char* name, Pointer x);
 Var makeDefault(const char *name, Type type);
 
@@ -122,7 +136,6 @@ int getClass(const char* name);
 int getInterface(const char* name);
 
 void sStoreReal(ll ptr,double x);
-double sLoadReal(ll ptr);
 
 bool toBool(Pointer ptr);
 char toByte(Pointer ptr);
@@ -133,25 +146,38 @@ Array toArray(Pointer ptr);
 Closure toClosure(Pointer ptr);
 Instance toInstance(Pointer ptr);
 
+bool isNum(Type x);
+bool isUNum(Type x);
+bool isByte(Type x);
+bool isBool(Type x);
+bool isReal(Type x);
+bool isStr(Type x);
+
 Pointer runIdx(Pointer ptr, Idx idx);
 Pointer runMember(Pointer ptr, Word word);
-Pointer run(Pointer ptr, Idx idx);
+
+Pointer runNFunc(NFunc fn, FCall args);
 
 ll cpObj(Object obj);
 
 bool isPriType(Type x);
 
 Array strToArray(LiteralString str);
+const char* arrayToStr(Array arr);
+
+const char* strAdd(const char* a, const char* b);
+const char* strAdd(const char* a, ll b);
+const char* strAdd(const char* a, ull b);
+const char* strAdd(const char* a, char b);
+const char* strAdd(const char* a, double b);
+const char* strAdd(const char* a, bool b);
 
 void chkMem();
-bool isValidPtr(int ptr);
-
-Closure getFn(Pointer x);
-Array getArray(Pointer x);
-Str getStr(Pointer x);
-Instance getInstance(Pointer x);
 
 Closure makeClosure(DefFunc fn, Pointer self);
+
+void enterScope();
+void exitScope();
 
 Pointer runExpr_1(Expr_1 e);
 Pointer runExpr(Expr e);
@@ -169,6 +195,48 @@ Pointer runExpr11(Expr11 e);
 Pointer runExpr12(Expr12 e);
 Pointer runFactor(Factor e);
 
+Pointer runNFunc(NFunc fn, FCall args) {
+	if (strcmp(fn.name, "println") == 0) {
+		if (args.list.size() != 1) {
+			panic("cannot call println: argument mismatch");
+		}
+
+		Array arr = toArray(runExpr(args.list[0]));
+		if (arr.etype.kind != BYTE) {
+			panic("cannot call println: argument is not []byte");
+		}
+
+		for (int i = 0; i < arr.array.size(); i++) {
+			putchar(arr.array[i]);
+		}
+		puts("");
+
+		return nil;
+	}
+	if (strcmp(fn.name, "print") == 0) {
+		if (args.list.size() != 1) {
+			panic("cannot call print: argument mismatch");
+		}
+
+		Array arr = toArray(runExpr(args.list[0]));
+		if (arr.etype.kind != BYTE) {
+			panic("cannot call print: argument is not []byte");
+		}
+
+		for (int i = 0; i < arr.array.size(); i++) {
+			putchar(arr.array[i]);
+		}
+
+		return nil;
+	}
+
+	panic("unknown nested function");
+}
+void point(Pointer ptr) {
+	if (isPriType(ptr.type)) return;
+	Object &obj = hAccess(sAccess(sAccess(ptr.ptr)));
+	obj.cnt++;
+}
 void chkMem() {
 	if(!(0 < proc.SP && proc.SP < proc.mem.size())) {
 		panic("SP error");
@@ -200,6 +268,44 @@ void initProc() {
 	proc.SP = 1;
 	proc.ESP = 2;
 	proc.STACK.push(Frame());
+	proc.STACK.top().vars.emplace_back();
+
+	proc.org.push_back(Object{ 0, NULL });
+
+	proc.mem.push_back(0);
+	proc.mem.push_back(0);
+
+	NFunc* println = new NFunc{ "println", Type{0}, {Type{OSB,"",{tByte}}} };
+	newGVar(makeVar("println", 
+		Pointer{
+			Type{
+				FUNC,
+				"",
+				{
+				Type{0},
+				Type{OSB,"",{tByte}}
+				}
+			}, 
+			false,
+			hAlloc(Object{1, 0, println})
+		}
+	));
+	NFunc* print = new NFunc{ "print", Type{0}, {Type{OSB,"",{tByte}}} };
+	newGVar(makeVar("print",
+		Pointer{
+			Type{
+				FUNC,
+				"",
+				{
+				Type{0},
+				Type{OSB,"",{tByte}}
+				}
+			},
+			false,
+			hAlloc(Object{1, 0, print})
+		}
+	));
+
 }
 void run(Program prog) {
 	initProc();
@@ -227,17 +333,17 @@ void run(Program prog) {
 			runDefInterface(*ptr3);
 		}
 	}
+
+	proc.GP = proc.ESP;
+	runFCall(getVar("main"), FCall{});
 }
 void runDefFunc(DefFunc df) {
 	Closure *c = new Closure;
 	*c = makeClosure(df, nil);
 
-	Object o = Object{FUNC, (void*)c};
-	int idx = proc.org.size();
-	proc.org.push_back(o);
+	Object o = Object{1, FUNC, (void*)c};
 
-	int ptr = sAlloc(1);
-	sAccess(ptr) = idx;
+	int ptr = hAlloc(o);
 
 	newVar(Var{c->fn.name,fnToType(c->fn), ptr});
 }
@@ -266,6 +372,7 @@ void runDefVar(DefVar df) {
 		auto type = *df.type;
 
 		newVar(makeDefault(name, type));
+		return;
 	}
 
 	auto type = *df.type;
@@ -298,20 +405,39 @@ bool isExists(const char* name) {
 
 	return false;
 }
+bool isGExists(const char* name) {
+	auto& global = proc.Global;
+	for (int i = 0; i < global.size(); i++) {
+		auto v = global[i];
+		auto vname = v.name;
+		if (strcmp(name, vname) == 0) {
+			return true;
+		}
+	}
+
+	return false;
+}
 Pointer getVar(const char* name) {
-	for (int i = proc.STACK.top().vars.size(); i >= 0; i--) {
+	for (int i = proc.STACK.top().vars.size() - 1; i >= 0; i--) {
 		auto& scope = proc.STACK.top().vars[i];
 		for (int j = 0; j < scope.size(); j++) {
 			auto v = scope[j];
 			auto vname = v.name;
 
 			if (strcmp(name, vname) == 0) {
-				return Pointer {v.type, true, sAccess(v.ptr)};
+				return Pointer {v.type, true, v.ptr};
 			}
 		}
 	}
+	
+	for (int i = 0; i < proc.Global.size(); i++) {
+		auto v = proc.Global[i];
+		if (strcmp(v.name, name) == 0) {
+			return Pointer{ v.type, true, gAccess(v.ptr) };
+		}
+	}
 
-	return Pointer { Type{0}, false, 0 };
+	panicf("cannot find %s", name);
 }
 int getClass(const char* name) {
 	for (int i = 0; i < proc.CLASS.size(); i++) {
@@ -336,6 +462,7 @@ int getInterface(const char* name) {
 Closure makeClosure(DefFunc fn, Pointer self) {
 	Closure ret;
 	ret.fn = fn;
+	ret.nf = NULL;
 	
 	ret.cap.push_back(self);
 	for(int i = 0;i < fn.captured.size();i++) {
@@ -352,11 +479,22 @@ Var makeDefault(const char *name, Type type) {
 }
 
 ll& sAccess(ll ptr) {
-	if(!(proc.SP + 1 < ptr && ptr < proc.ESP)) panic("invalid pointer");
+	if(!
+		(
+			(proc.SP < ptr && ptr < proc.ESP)||
+			(0<ptr&&ptr<proc.GP)
+		)
+	) panic("invalid pointer");
+
+	return proc.mem[ptr];
+}
+ll& gAccess(ll ptr) {
+	if (!(0 < ptr && ptr < proc.GP)) panic("invalid pointer");
 
 	return proc.mem[ptr];
 }
 Object& hAccess(ll ptr) {
+	ptr = -ptr;
 	if(!(0 < ptr && ptr < proc.org.size())) panic("invalid pointer");
 
 	return proc.org[ptr];
@@ -364,7 +502,7 @@ Object& hAccess(ll ptr) {
 ll sAlloc(int size) {
 	ll ret = proc.ESP;
 	
-	while(proc.ESP + size < proc.mem.size()) {
+	while(proc.ESP + size > proc.mem.size()) {
 		proc.mem.push_back(0);
 	}
 
@@ -376,7 +514,11 @@ ll hAlloc(Object obj) {
 	int ret = proc.org.size();
 	proc.org.push_back(obj);
 
-	return ret;
+	int p = sAlloc(1);
+	sAccess(p) = -ret;
+	int p2 = sAlloc(1);
+	sAccess(p2) = p;
+	return p2;
 }
 ll cpObj(Object obj) {
 	Object neo;
@@ -388,21 +530,20 @@ ll cpObj(Object obj) {
 	case OSB:
 		ptr1 = new Array();
 		*ptr1 = *(Array*)obj.ptr;
-		neo = Object{OSB, (void*)ptr1};
+		neo = Object{1, OSB, (void*)ptr1};
 		break;
 	case WORD:
 		ptr2 = new Instance();
 		*ptr2 = *(Instance*)obj.ptr;
-		neo = Object{OSB, (void*)ptr2};
+		neo = Object{1, OSB, (void*)ptr2};
 		break;
 	case FUNC:
 		ptr3 = new Closure();
 		*ptr3 = *(Closure*)obj.ptr;
-		neo = Object{OSB, (void*)ptr3};
+		neo = Object{1, OSB, (void*)ptr3};
 	}
 
-	proc.org.push_back(obj);
-	return proc.org.size() - 1;
+	return hAlloc(neo);
 }
 bool isSameType(Type x, Type y) {
 	if(x.kind != y.kind) return false;
@@ -430,9 +571,14 @@ void assign(Pointer dst, Pointer src) {
 	sAccess(dst.ptr) = sAccess(src.ptr);
 }
 void newVar(Var var) {
-	if(isExists(var.name)) panicf("cannot create var: %s is already exists", var.name);
+	if(strlen(var.name) > 0 && isExists(var.name)) panicf("cannot create var: %s is already exists", var.name);
 
 	proc.STACK.top().vars.back().push_back(var);
+}
+void newGVar(Var var) {
+	if (strlen(var.name) > 0 && isGExists(var.name)) panicf("cannot create global var: %s is already exists", var.name);
+
+	proc.Global.push_back(var);
 }
 Var makeVar(const char *name, Pointer ptr) {
 	ll p = sAlloc(1);
@@ -453,8 +599,28 @@ Type fnToType(DefFunc fn) {
 bool isAssignable(Type dst, Type src) {
 	return isSameType(dst, src);
 }
+bool isStr(Type x) {
+	if (x.kind != OSB) return false;
+	if (x.add.size() != 1) return false;
+	return x.add[0].kind == BYTE;
+}
+bool isNum(Type x) {
+	return x.kind == NUM;
+}
+bool isUNum(Type x) {
+	return x.kind == UNUM;
+}
+bool isReal(Type x) {
+	return x.kind == REAL;
+}
+bool isByte(Type x) {
+	return x.kind == BYTE;
+}
+bool isBool(Type x) {
+	return x.kind == BOOL;
+}
 bool isPriType(Type x) {
-	return (x.kind == NUM || x.kind == UNUM || x.kind == BYTE || x.kind == BOOL);
+	return (x.kind == 0 || x.kind == NUM || x.kind == UNUM || x.kind == BYTE || x.kind == BOOL);
 }
 void runStmt(Stmt stmt, jmp_buf jmp) {
 	switch(stmt.kind) {
@@ -499,11 +665,20 @@ void runIfStmt(IfStmt stmt, jmp_buf jmp) {
 	}
 }
 void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
+	enterScope();
 	for(int i = 0;i < stmt.childs.size();i++) {
 		auto s = stmt.childs[i];
 
-		runStmt(s, jmp);
+		jmp_buf aj;
+		int av = setjmp(aj);
+		if(av == 0)
+			runStmt(s, jmp);
+		else {
+			exitScope();
+			longjmp(jmp, av);
+		}
 	}
+	exitScope();
 }
 void runForStmt(ForStmt stmt, jmp_buf jmp) {
 	if(stmt.init != NULL) {
@@ -535,15 +710,20 @@ void runForStmt(ForStmt stmt, jmp_buf jmp) {
 	}
 }
 void runRetStmt(RetStmt stmt, jmp_buf jmp) {
-	proc.RET = runExpr(*stmt.expr);
+	proc.STACK.top().RET = runExpr(*stmt.expr);
 	
-	if(!isAssignable(proc.Rtype, proc.RET.type))
+	if(!isAssignable(proc.STACK.top().rtype, proc.STACK.top().RET.type))
 		panic("cannot return: type mismatch");
 
 	longjmp(jmp, 1);
 }
 Pointer runFCall(Pointer fn, FCall args) {
 	Closure c = toClosure(fn);
+
+	if (c.nf != NULL) {
+		return runNFunc(*c.nf, args);
+	}
+
 	Pointer ret;
 
 	jmp_buf jp;
@@ -556,6 +736,21 @@ Pointer runFCall(Pointer fn, FCall args) {
 		}
 
 		proc.STACK.push(Frame());
+		proc.STACK.top().vars.emplace_back();
+
+		for (int i = 1; i < c.cap.size(); i++) {
+			auto ptr = c.cap[i];
+			point(ptr);
+		}
+
+		for (int i = 0; i < pargs.size(); i++) {
+			auto ptr = pargs[i];
+			point(ptr);
+		}
+
+		int ptr = sAlloc(1);
+		sAccess(ptr) = proc.SP;
+		proc.SP = proc.ESP - 1;
 
 		newVar(makeVar("", c.cap[0]));
 		for(int i = 1;i < c.cap.size();i++) {
@@ -571,8 +766,19 @@ Pointer runFCall(Pointer fn, FCall args) {
 
 			newVar(makeVar(name, ptr));
 		}
+
+
+		runBlockStmt(c.fn.body, jp);
+		return nil;
 	}
 	else if(jv == 1) {
+		ret = proc.STACK.top().RET;
+		clearFrame();
+		proc.STACK.pop();
+
+		if (proc.mem[proc.SP] != 0) {
+			proc.SP = proc.mem[proc.SP];
+		}
 	}
 	else if(jv == 2) {
 		panic("unexpected break");
@@ -598,14 +804,14 @@ char toByte(Pointer p) {
 	return (char)sAccess(p.ptr);
 }
 ll toNum(Pointer p) {
-	if(p.type.kind != BOOL) {
+	if(p.type.kind != NUM) {
 		panic("toNum: it is not num");
 	}
 
 	return (ll)sAccess(p.ptr);
 }
 ull toUNum(Pointer p) {
-	if(p.type.kind != BOOL) {
+	if(p.type.kind != UNUM) {
 		panic("toUNum: it is not unum");
 	}
 
@@ -616,23 +822,39 @@ double toReal(Pointer p) {
 		panic("toUNum: it is not unum");
 	}
 
-	return (ull)sAccess(p.ptr);
+	return *(double*)((void*) & sAccess(p.ptr));
 }
 Closure toClosure(Pointer p) {
 	if(p.type.kind != FUNC) {
 		panic("toClosure: it is not function");
 	}
 
-	int ptr = sAccess(p.ptr);
+	int ptr = sAccess(sAccess(p.ptr));
+	Object obj = hAccess(ptr);
+	if (obj.kind == 0) {
+		Closure ret;
+		NFunc *nf = (NFunc*)obj.ptr;
 
-	return *(Closure*)hAccess(ptr).ptr;
+		std::vector<std::pair<const char*, Type>> args;
+		for (int i = 0; i < nf->frame.size(); i++)
+			args.emplace_back("", nf->frame[i]);
+
+		ret.nf = nf;
+		ret.fn.ret = nf->rtype;
+		ret.fn.frame = args;
+		ret.cap.push_back(nil);
+		return ret;
+	}
+
+	Closure *cl = (Closure*)(obj.ptr);
+	return *cl;
 }
 Array toArray(Pointer p) {
-	if(p.type.kind != FUNC) {
+	if(p.type.kind != OSB) {
 		panic("toArray: it is not array");
 	}
 
-	int ptr = sAccess(p.ptr);
+	int ptr = sAccess(sAccess(p.ptr));
 
 	return *(Array*)hAccess(ptr).ptr;
 }
@@ -641,7 +863,7 @@ Instance toInstance(Pointer p) {
 		panic("toInstance: it is not object");
 	}
 
-	int ptr = sAccess(p.ptr);
+	int ptr = sAccess(sAccess(p.ptr));
 
 	return *(Instance*)hAccess(ptr).ptr;
 }
@@ -675,6 +897,7 @@ Pointer runExpr(Expr e) {
 		}
 	}
 
+	ret.type = tBool;
 	sAccess(ret.ptr) = false;
 	return ret;
 }
@@ -694,6 +917,7 @@ Pointer runExpr1(Expr1 e) {
 		}
 	}
 
+	ret.type = tBool;
 	sAccess(ret.ptr) = false;
 	return ret;
 }
@@ -703,24 +927,35 @@ Pointer runExpr2(Expr2 e) {
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto p = runExpr3(e.childs[i]);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
+		if(isNum(ret.type) && isNum(p.type)) {
 			ll a,b,c;
 			a = toNum(ret);
 			b = toNum(p);
 			c = a | b;
 
+			ret.type = tNum;
 			sAccess(ret.ptr) = c;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
+		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
 			a = toUNum(ret);
 			b = toUNum(p);
 			c = a | b;
 
+			ret.type = tUNum;
+			sAccess(ret.ptr) = c;
+		}
+		else if (isByte(ret.type) && isByte(p.type)) {
+			char a, b, c;
+			a = toByte(ret);
+			b = toByte(p);
+			c = a | b;
+
+			ret.type = tByte;
 			sAccess(ret.ptr) = c;
 		}
 		else {
-			panic("runExpr3: cannot calc: type mismatch");
+			panic("runExpr2: cannot calc: type mismatch");
 		}
 	}
 
@@ -732,20 +967,31 @@ Pointer runExpr3(Expr3 e) {
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto p = runExpr4(e.childs[i]);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
+		if(isNum(ret.type) && isNum(p.type)) {
 			ll a,b,c;
 			a = toNum(ret);
 			b = toNum(p);
 			c = a ^ b;
 
+			ret.type = tNum;
 			sAccess(ret.ptr) = c;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
+		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
 			a = toUNum(ret);
 			b = toUNum(p);
 			c = a ^ b;
 
+			ret.type = tUNum;
+			sAccess(ret.ptr) = c;
+		}
+		else if (isByte(ret.type) && isByte(p.type)) {
+			char a, b, c;
+			a = toByte(ret);
+			b = toByte(p);
+			c = a ^ b;
+
+			ret.type = tByte;
 			sAccess(ret.ptr) = c;
 		}
 		else {
@@ -761,24 +1007,35 @@ Pointer runExpr4(Expr4 e) {
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto p = runExpr5(e.childs[i]);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
+		if(isNum(ret.type) && isNum(p.type)) {
 			ll a,b,c;
 			a = toNum(ret);
 			b = toNum(p);
 			c = a & b;
 
+			ret.type = tNum;
 			sAccess(ret.ptr) = c;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
+		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
 			a = toUNum(ret);
 			b = toUNum(p);
 			c = a & b;
 
+			ret.type = tUNum;
+			sAccess(ret.ptr) = c;
+		}
+		else if (isByte(ret.type) && isByte(p.type)) {
+			char a, b, c;
+			a = toByte(ret);
+			b = toByte(p);
+			c = a & b;
+
+			ret.type = tByte;
 			sAccess(ret.ptr) = c;
 		}
 		else {
-			panic("runExpr3: cannot calc: type mismatch");
+			panic("runExpr4: cannot calc: type mismatch");
 		}
 	}
 
@@ -794,8 +1051,9 @@ Pointer runExpr5(Expr5 e) {
 		auto exp = duo.second;
 
 		auto p = runExpr6(exp);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
-			ll a,b,c;
+		if(isNum(ret.type) && isNum(p.type)) {
+			ll a, b;
+			bool c;
 			a = toNum(ret);
 			b = toNum(p);
 			
@@ -807,8 +1065,9 @@ Pointer runExpr5(Expr5 e) {
 			sAccess(ret.ptr) = c;
 			ret.type = tBool;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
-			ull a,b,c;
+		else if(isUNum(ret.type) && isUNum(p.type)) {
+			ull a, b;
+			bool c;
 			a = toUNum(ret);
 			b = toUNum(p);
 			
@@ -820,8 +1079,9 @@ Pointer runExpr5(Expr5 e) {
 			sAccess(ret.ptr) = c;
 			ret.type = tBool;
 		}
-		else if(ret.type.kind == BYTE && ret.type.kind == BYTE) {
-			char a,b,c;
+		else if(isByte(ret.type) && isByte(p.type)) {
+			char a, b;
+			bool c;
 			a = toByte(ret);
 			b = toByte(p);
 
@@ -835,8 +1095,10 @@ Pointer runExpr5(Expr5 e) {
 			sAccess(ret.ptr) = c;
 			ret.type = tBool;
 		}
-		else if(ret.type.kind == REAL && ret.type.kind == REAL) {
-			bool a,b,c;
+		else if(isReal(ret.type) && isReal(p.type)) {
+			double a, b;
+			bool c;
+
 			a = toReal(ret);
 			b = toReal(p);
 
@@ -850,7 +1112,7 @@ Pointer runExpr5(Expr5 e) {
 			sAccess(ret.ptr) = c;
 			ret.type = tBool;
 		}
-		else if(ret.type.kind == BOOL && ret.type.kind == BOOL) {
+		else if(isBool(ret.type) && isBool(p.type)) {
 			bool a,b,c;
 			a = toBool(ret);
 			b = toBool(p);
@@ -866,7 +1128,7 @@ Pointer runExpr5(Expr5 e) {
 			ret.type = tBool;
 		}
 		else {
-			panic("runExpr3: cannot calc: type mismatch");
+			panic("runExpr5: cannot calc: type mismatch");
 		}
 	}
 
@@ -882,8 +1144,9 @@ Pointer runExpr6(Expr6 e) {
 		auto exp = duo.second;
 
 		auto p = runExpr7(exp);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
-			ll a,b,c;
+		if(isNum(ret.type) && isNum(p.type)) {
+			ll a, b;
+			bool c;
 			a = toNum(ret);
 			b = toNum(p);
 			
@@ -907,8 +1170,9 @@ Pointer runExpr6(Expr6 e) {
 			sAccess(ret.ptr) = c;
 			ret.type = tBool;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
-			ull a,b,c;
+		else if(isUNum(ret.type) && isUNum(p.type)) {
+			ull a, b;
+			bool c;
 			a = toUNum(ret);
 			b = toUNum(p);
 			
@@ -932,8 +1196,9 @@ Pointer runExpr6(Expr6 e) {
 			sAccess(ret.ptr) = c;
 			ret.type = tBool;
 		}
-		else if(ret.type.kind == BYTE && ret.type.kind == BYTE) {
-			char a,b,c;
+		else if(isByte(ret.type) && isByte(p.type)) {
+			char a, b;
+			bool c;
 			a = toByte(ret);
 			b = toByte(p);
 
@@ -957,8 +1222,34 @@ Pointer runExpr6(Expr6 e) {
 			sAccess(ret.ptr) = c;
 			ret.type = tBool;
 		}
+		else if (isReal(ret.type) && isReal(p.type)) {
+			double a, b;
+			bool c;
+			a = toReal(ret);
+			b = toReal(p);
+
+			switch (kind) {
+			case GR:
+				c = (a > b);
+				break;
+			case LE:
+				c = (a < b);
+				break;
+			case GEQ:
+				c = (a >= b);
+				break;
+			case LEQ:
+				c = (a <= b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			sAccess(ret.ptr) = c;
+			ret.type = tBool;
+		}
 		else {
-			panic("runExpr3: cannot calc: type mismatch");
+			panic("runExpr6: cannot calc: type mismatch");
 		}
 	}
 
@@ -974,7 +1265,7 @@ Pointer runExpr7(Expr7 e) {
 		auto exp = duo.second;
 
 		auto p = runExpr8(exp);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
+		if(isNum(ret.type) && isNum(p.type)) {
 			ll a,b,c;
 			a = toNum(ret);
 			b = toNum(p);
@@ -991,8 +1282,9 @@ Pointer runExpr7(Expr7 e) {
 			}
 
 			sAccess(ret.ptr) = c;
+			ret.type = tNum;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
+		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
 			a = toUNum(ret);
 			b = toUNum(p);
@@ -1009,8 +1301,9 @@ Pointer runExpr7(Expr7 e) {
 			}
 
 			sAccess(ret.ptr) = c;
+			ret.type = tUNum;
 		}
-		else if(ret.type.kind == BYTE && ret.type.kind == BYTE) {
+		else if(isByte(ret.type) && isByte(p.type)) {
 			char a,b,c;
 			a = toByte(ret);
 			b = toByte(p);
@@ -1027,9 +1320,10 @@ Pointer runExpr7(Expr7 e) {
 			}
 
 			sAccess(ret.ptr) = c;
+			ret.type = tByte;
 		}
 		else {
-			panic("runExpr3: cannot calc: type mismatch");
+			panic("runExpr7: cannot calc: type mismatch");
 		}
 	}
 
@@ -1045,7 +1339,7 @@ Pointer runExpr8(Expr8 e) {
 		auto exp = duo.second;
 
 		auto p = runExpr9(exp);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
+		if(isNum(ret.type) && isNum(p.type)) {
 			ll a,b,c;
 			a = toNum(ret);
 			b = toNum(p);
@@ -1061,9 +1355,10 @@ Pointer runExpr8(Expr8 e) {
 				panic("wrong operator");
 			}
 
+			ret.type = tNum;
 			sAccess(ret.ptr) = c;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
+		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
 			a = toUNum(ret);
 			b = toUNum(p);
@@ -1079,9 +1374,10 @@ Pointer runExpr8(Expr8 e) {
 				panic("wrong operator");
 			}
 
+			ret.type = tUNum;
 			sAccess(ret.ptr) = c;
 		}
-		else if(ret.type.kind == BYTE && ret.type.kind == BYTE) {
+		else if(isByte(ret.type) && isByte(p.type)) {
 			char a,b,c;
 			a = toByte(ret);
 			b = toByte(p);
@@ -1097,10 +1393,169 @@ Pointer runExpr8(Expr8 e) {
 				panic("wrong operator");
 			}
 
+			ret.type = tByte;
 			sAccess(ret.ptr) = c;
 		}
+		else if (isReal(ret.type) && isReal(p.type)) {
+			double a, b, c;
+			a = toReal(ret);
+			b = toReal(p);
+
+			switch (kind) {
+			case ADD:
+				c = (a + b);
+				break;
+			case SUB:
+				c = (a - b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			ret.type = tReal;
+			sStoreReal(ret.ptr, c);
+		}
+		else if (isStr(ret.type) && isStr(p.type)) {
+			const char* a, * b, * c;
+			a = arrayToStr(toArray(ret));
+			b = arrayToStr(toArray(p));
+			c = NULL;
+
+			switch (kind) {
+			case ADD:
+				c = strAdd(a, b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			Array* arr = new Array();
+			*arr = strToArray(LiteralString{ c });
+			ret.type = tStr;
+			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
+		}
+		else if (isStr(ret.type) && isNum(p.type)) {
+			const char* a, * c;
+			ll b;
+
+			a = arrayToStr(toArray(ret));
+			b = toNum(p);
+			c = NULL;
+
+			switch (kind) {
+			case ADD:
+				c = strAdd(a, b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			Array* arr = new Array();
+			*arr = strToArray(LiteralString{ c });
+			ret.type = tStr;
+			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
+		}
+		else if (isStr(ret.type) && isStr(p.type)) {
+			const char* a, * b, * c;
+			a = arrayToStr(toArray(ret));
+			b = arrayToStr(toArray(p));
+			c = NULL;
+
+			switch (kind) {
+			case ADD:
+				c = strAdd(a, b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			Array* arr = new Array();
+			*arr = strToArray(LiteralString{ c });
+			ret.type = tStr;
+			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
+			}
+		else if (isStr(ret.type) && isUNum(p.type)) {
+			const char* a, * c;
+			ull b;
+			a = arrayToStr(toArray(ret));
+			b = toUNum(p);
+			c = NULL;
+
+			switch (kind) {
+			case ADD:
+				c = strAdd(a, b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			Array* arr = new Array();
+			*arr = strToArray(LiteralString{ c });
+			ret.type = tStr;
+			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
+			}
+		else if (isStr(ret.type) && isByte(p.type)) {
+			const char* a, * c;
+			char b;
+			a = arrayToStr(toArray(ret));
+			b = toByte(p);
+			c = NULL;
+
+			switch (kind) {
+			case ADD:
+				c = strAdd(a, b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			Array* arr = new Array();
+			*arr = strToArray(LiteralString{ c });
+			ret.type = tStr;
+			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
+		}
+		else if (isStr(ret.type) && isBool(p.type)) {
+			const char* a, * c;
+			bool b;
+			a = arrayToStr(toArray(ret));
+			b = toBool(p);
+			c = NULL;
+
+			switch (kind) {
+			case ADD:
+				c = strAdd(a, b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			Array* arr = new Array();
+			*arr = strToArray(LiteralString{ c });
+			ret.type = tStr;
+			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
+		}
+		else if (isStr(ret.type) && isReal(p.type)) {
+			const char* a, * c;
+			double b;
+			a = arrayToStr(toArray(ret));
+			b = toReal(p);
+			c = NULL;
+
+			switch (kind) {
+			case ADD:
+				c = strAdd(a, b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			Array* arr = new Array();
+			*arr = strToArray(LiteralString{ c });
+			ret.type = tStr;
+			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
+		}
 		else {
-			panic("runExpr3: cannot calc: type mismatch");
+			panic("runExpr8: cannot calc: type mismatch");
 		}
 	}
 
@@ -1116,7 +1571,7 @@ Pointer runExpr9(Expr9 e) {
 		auto exp = duo.second;
 
 		auto p = runExpr10(exp);
-		if(ret.type.kind == NUM && p.type.kind == NUM) {
+		if(isNum(ret.type) && isNum(p.type)) {
 			ll a,b,c;
 			a = toNum(ret);
 			b = toNum(p);
@@ -1137,7 +1592,7 @@ Pointer runExpr9(Expr9 e) {
 
 			sAccess(ret.ptr) = c;
 		}
-		else if(ret.type.kind == UNUM && p.type.kind == UNUM) {
+		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
 			a = toUNum(ret);
 			b = toUNum(p);
@@ -1158,7 +1613,7 @@ Pointer runExpr9(Expr9 e) {
 
 			sAccess(ret.ptr) = c;
 		}
-		else if(ret.type.kind == BYTE && ret.type.kind == BYTE) {
+		else if(isByte(ret.type) && isByte(p.type)) {
 			char a,b,c;
 			a = toByte(ret);
 			b = toByte(p);
@@ -1179,8 +1634,26 @@ Pointer runExpr9(Expr9 e) {
 
 			sAccess(ret.ptr) = c;
 		}
+		else if (isReal(ret.type) && isReal(p.type)) {
+			double a, b, c;
+			a = toReal(ret);
+			b = toReal(p);
+
+			switch (kind) {
+			case MUL:
+				c = (a * b);
+				break;
+			case DIV:
+				c = (a / b);
+				break;
+			default:
+				panic("wrong operator");
+			}
+
+			sAccess(ret.ptr) = c;
+		}
 		else {
-			panic("runExpr3: cannot calc: type mismatch");
+			panic("runExpr9: cannot calc: type mismatch");
 		}
 	}
 
@@ -1284,17 +1757,17 @@ Pointer runExpr11(Expr11 e) {
 
 		switch (kind) {
 			case NOT:
-				if(ret.type.kind == NUM  || ret.type.kind == UNUM || ret.type.kind == BYTE) {
+				if(isNum(ret.type)  || isUNum(ret.type) || isByte(ret.type)) {
 					sAccess(ret.ptr) = ~sAccess(ret.ptr);
 				}
 				else panic("cannot execute ~ operator");
 			case LNOT:
-				if(ret.type.kind != BOOL) {
+				if(!isBool(ret.type)) {
 					panic("cannot execute not operator");
 				}
-				sAccess(ret.ptr) = !sAccess(ret.ptr);
+				sAccess(ret.ptr) = (sAccess(ret.ptr) == 0) ? 1 : 0;
 			case SUB:
-				if(ret.type.kind == NUM || ret.type.kind == BYTE) {
+				if(isNum(ret.type) || isByte(ret.type)) {
 					sAccess(ret.ptr) = -sAccess(ret.ptr);
 				}
 				else {
@@ -1355,6 +1828,8 @@ Pointer runExpr12(Expr12 e) {
 Pointer runFactor(Factor e) {
 	Pointer ret;
 	Array *arr;
+	Closure *cl;
+
 	Var v;
 	switch(e.kind) {
 	case OBR:
@@ -1378,10 +1853,10 @@ Pointer runFactor(Factor e) {
 	case LSTR:
 		arr = new Array();
 		*arr = strToArray(*(LiteralString*)e.ptr);
-		proc.org.push_back(Object{OSB, (void*)arr});
 		
 		ret.type.kind = OSB;
 		ret.type.add.push_back(tByte);
+		ret.ptr = hAlloc(Object{1, OSB, (void*)arr});
 		break;
 	case LREAL:
 		ret.type = tReal;
@@ -1390,17 +1865,36 @@ Pointer runFactor(Factor e) {
 		break;
 	case WORD:
 		ret = getVar((*(Word*)e.ptr).word);
+		ret.lv = true;
+		break;
 	case OSB:
-		
+		arr = new Array();
+		*arr = makeArray(*(LiteralArray*)e.ptr);
+		ret.ptr = hAlloc(Object{ 1, OSB, arr });
+		ret.type = Type{ OSB, "", {arr->etype} };
+		sAccess(ret.ptr) = proc.org.size() - 1;
+		break;
 	case LTRUE:
-
+		ret.type = tBool;
+		ret.ptr = sAlloc(1);
+		sAccess(ret.ptr) = true;
+		break;
 	case LFALSE:
-	
+		ret.type = tBool;
+		ret.ptr = sAlloc(1);
+		sAccess(ret.ptr) = false;
+		break;
 	case FUNC:
+		cl = new Closure();
+		*cl = makeClosure(*(DefFunc*)e.ptr, nil);
+		ret.type = fnToType(*(DefFunc*)e.ptr);
+		ret.ptr = hAlloc(Object{ 1, FUNC, cl });
+		break;
 	default:
+		panic("unknwon factor");
 		break;
 	}
-	return nil;
+	return ret;
 }
 Pointer runMember(Pointer ptr, Word word) {
 	Instance inst = toInstance(ptr);
@@ -1433,5 +1927,144 @@ Pointer runIdx(Pointer ptr, Idx idx) {
 
 	int i = sAccess(id.ptr);
 	return Pointer{type,true,arr.array[i]};
+}
+void clearFrame() {
+	auto& f = proc.STACK.top();
+	for (int i = f.vars.size() - 1; i >= 0; i--) {
+		auto& list = f.vars[i];
+
+		for (int j = list.size() - 1; j >= 0; j--) {
+			auto& var = list[j];
+		
+			destroy(Pointer{var.type, false, sAccess(var.ptr)});
+		}
+	}
+}
+void enterScope() {
+	proc.STACK.push(Frame());
+	proc.STACK.top().vars.emplace_back();
+}
+void exitScope() {
+	auto list = proc.STACK.top().vars.back();
+	for (int i = list.size() - 1; i >= 0; i--) {
+		auto var = list[i];
+
+		destroy(Pointer{ var.type, false, var.ptr });
+	}
+	proc.STACK.top().vars.pop_back();
+}
+Array strToArray(LiteralString lstr) {
+	int len = strlen(lstr.str);
+	Array ret;
+
+	ret.etype = tByte;
+
+	for (int i = 0; i < len; i++) {
+		ret.array.push_back(lstr.str[i]);
+	}
+
+	return ret;
+}
+const char* strAdd(const char* a, const char* b) {
+	int alen, blen;
+	alen = strlen(a);
+	blen = strlen(b);
+
+	int cnt = 0;
+	char* ret = (char*)malloc(sizeof(char) * (alen + blen + 1));
+	for (int i = 0; i < alen; i++) ret[cnt++] = a[i];
+	for (int i = 0; i < blen; i++) ret[cnt++] = b[i];
+	ret[cnt++] = '\0';
+
+	return ret;
+}
+const char* strAdd(const char* a, ll b) {
+	char buf[32];
+	sprintf(buf, "%lld", b);
+
+	return strAdd(a, buf);
+}
+const char* strAdd(const char* a, ull b) {
+	char buf[32];
+	sprintf(buf, "%llu", b);
+
+	return strAdd(a, buf);
+}
+const char* strAdd(const char* a, char b) {
+	char buf[32];
+	sprintf(buf, "%d", b);
+
+	return strAdd(a, buf);
+}
+const char* strAdd(const char* a, bool b) {
+	char buf[32];
+	sprintf(buf, "%s", (b==0)?"false":"true");
+
+	return strAdd(a, buf);
+}
+const char* strAdd(const char* a, double b) {
+	char buf[32];
+	sprintf(buf, "%f", b);
+
+	return strAdd(a, buf);
+}
+void sStoreReal(ll ptr, double val) {
+	ll v = *(ll*)((void*)&val);
+	sAccess(ptr) = v;
+}
+Array makeArray(LiteralArray arr) {
+	Array ret;
+	ret.etype = arr.type;
+	for (int i = 0; i < arr.elem.size(); i++) {
+		ret.array.push_back(sAccess(runExpr(arr.elem[i]).ptr));
+	}
+	return ret;
+}
+void destroy(Pointer ptr) {
+	if (isPriType(ptr.type)) return;
+
+	Object& obj = hAccess(sAccess(sAccess(ptr.ptr)));
+	obj.cnt--;
+
+	switch (ptr.type.kind) {
+	case OSB:
+		destroyArray(toArray(ptr));
+		break;
+	case FUNC:
+		destroyClosure(toClosure(ptr));
+		break;
+	case WORD:
+		destroyInstance(toInstance(ptr));
+	}
+}
+void destroyArray(Array arr) {
+	if (isPriType(arr.etype)) return;
+
+	for (int i = 0; i < arr.array.size(); i++) {
+		destroy(Pointer{ arr.etype, false,arr.array[i] });
+	}
+}
+void destroyClosure(Closure cl) {
+	for (int i = 0; i < cl.cap.size(); i++) {
+		destroy(cl.cap[i]);
+	}
+}
+void destroyInstance(Instance in) {
+	for (int i = 0; i < in.fields.size(); i++) {
+		auto type = in.df->field[i].type;
+		auto ptr = in.fields[i].second;
+
+		destroy(Pointer{ type, false, ptr });
+	}
+}
+const char* arrayToStr(Array arr) {
+	if (!isByte(arr.etype)) panic("arrayToStr: it is not string");
+	char* buf = (char*)malloc(arr.array.size() + 1);
+	for (int i = 0; i < arr.array.size(); i++) {
+		buf[i] = arr.array[i];
+	}
+	buf[arr.array.size()] = '\0';
+
+	return buf;
 }
 #endif

@@ -98,7 +98,7 @@ std::vector<Token> parse(const char* str) {
     int sp = -1;
 
     for(int i = 0;i < len;) {
-        if(str[i] == ' ' || str[i] == '\t') {
+        if(str[i] == ' ' || str[i] == '\t' || str[i] == '\r') {
             // white space
             i++;
         }
@@ -124,6 +124,7 @@ std::vector<Token> parse(const char* str) {
             // literal number
             unsigned long long x = parseNumber(str, i, 32);
             if(i < len && str[i] == '.'){
+                i++;
                 unsigned long long y = parseNumber(str, i, 32);
                 ret.push_back(Token{LREAL, NULL, makeReal(x, y), 0, line, i - sp});
             }
