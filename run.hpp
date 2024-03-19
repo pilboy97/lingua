@@ -84,6 +84,7 @@ Type tUNum = Type{UNUM};
 Type tByte = Type{BYTE};
 Type tReal = Type{REAL};
 Type tStr = Type{ OSB,"",{tByte} };
+Type tAny = Type{ VOID };
 
 bool isNull(Pointer ptr);
 
@@ -152,6 +153,8 @@ bool isByte(Type x);
 bool isBool(Type x);
 bool isReal(Type x);
 bool isStr(Type x);
+
+void validType(Type x);
 
 Pointer runIdx(Pointer ptr, Idx idx);
 Pointer runMember(Pointer ptr, Word word);
@@ -228,6 +231,20 @@ Pointer runNFunc(NFunc fn, FCall args) {
 		}
 
 		return nil;
+	}
+	if (strcmp(fn.name, "len") == 0) {
+		if (args.list.size() != 1) {
+			panic("cannot call len: argument mismatch");
+		}
+
+		Array arr = toArray(runExpr(args.list[0]));
+
+		Pointer ret;
+		ret.type = tNum;
+		ret.ptr = sAlloc(1);
+		sAccess(ret.ptr) = arr.array.size();
+
+		return ret;
 	}
 
 	panic("unknown nested function");
@@ -306,6 +323,21 @@ void initProc() {
 		}
 	));
 
+	NFunc* len = new NFunc{ "len", tNum, {Type{OSB,"",{tAny}}} };
+	newGVar(makeVar("len",
+		Pointer{
+			Type{
+				FUNC,
+				"",
+				{
+				tNum,
+				Type{OSB,"",{tAny}}
+				}
+			},
+			false,
+			hAlloc(Object{1, 0, len})
+		}
+	));
 }
 void run(Program prog) {
 	initProc();
@@ -354,6 +386,29 @@ void runDefClass(DefClass df) {
 void runDefInterface(DefInterface df) {
 	proc.INTERFACE.push_back(df);
 	newVar(Var{"",nil.type, 0});
+}
+void validType(Type x) {
+	if (isPriType(x) && x.add.size() != 0) {
+		panic("wrong type");
+	}
+	else if (!isPriType(x)) {
+		if (x.kind == OSB && x.add.size() != 1) {
+			panic("wrong type");
+		}
+		if (x.kind == WORD && x.add.size() != 0) {
+			panic("wrong type");
+		}
+		if (!(x.kind == FUNC || x.kind == WORD || x.kind == OSB)) {
+			panic("wrong type");
+		}
+		if (x.kind == WORD && getClass(x.name) == -1 && getInterface(x.name) == -1) {
+			panic("wrong type");
+		}
+
+		for (int i = 0; i < x.add.size(); i++) {
+			validType(x.add[i]);
+		}
+	}
 }
 void runDefVar(DefVar df) {
 	auto name = df.name;
@@ -473,7 +528,16 @@ Closure makeClosure(DefFunc fn, Pointer self) {
 	return ret;
 }
 Var makeDefault(const char *name, Type type) {
-	ll ptr = sAlloc(1);
+	ll ptr;
+	if (type.kind == OSB) {
+		Array* arr = new Array();
+		*arr = { type.add[0], {} };
+
+		ptr = hAlloc(Object{ 1, OSB, arr });
+
+		return Var{ name, type, ptr };
+	}
+	ptr = sAlloc(1);
 	sAccess(ptr) = 0;
 	return Var{name, type, ptr};
 }
@@ -581,10 +645,15 @@ void newGVar(Var var) {
 	proc.Global.push_back(var);
 }
 Var makeVar(const char *name, Pointer ptr) {
-	ll p = sAlloc(1);
-	sAccess(p) = ptr.ptr;
+	if (!isPriType(ptr.type)) {
+		ll p = sAlloc(1);
+		sAccess(p) = ptr.ptr;
 
-	return Var{name, ptr.type, p};
+		return Var{ name, ptr.type, p };
+	}
+	else {
+		return Var{ name, ptr.type, ptr.ptr };
+	}
 }
 Type fnToType(DefFunc fn) {
 	Type ret;
@@ -597,6 +666,7 @@ Type fnToType(DefFunc fn) {
 	return ret;
 }
 bool isAssignable(Type dst, Type src) {
+	if (dst.kind == VOID) return true;
 	return isSameType(dst, src);
 }
 bool isStr(Type x) {
@@ -881,6 +951,7 @@ Pointer runExpr_1(Expr_1 e) {
 }
 Pointer runExpr(Expr e) {
 	Pointer ret = runExpr1(e.childs[0]);
+	validType(ret.type);
 	if(e.childs.size() == 1) return ret;
 
 	if(toBool(ret)) {
@@ -899,6 +970,7 @@ Pointer runExpr(Expr e) {
 
 	ret.type = tBool;
 	sAccess(ret.ptr) = false;
+	validType(ret.type);
 	return ret;
 }
 Pointer runExpr1(Expr1 e) {
@@ -1455,25 +1527,6 @@ Pointer runExpr8(Expr8 e) {
 			ret.type = tStr;
 			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
 		}
-		else if (isStr(ret.type) && isStr(p.type)) {
-			const char* a, * b, * c;
-			a = arrayToStr(toArray(ret));
-			b = arrayToStr(toArray(p));
-			c = NULL;
-
-			switch (kind) {
-			case ADD:
-				c = strAdd(a, b);
-				break;
-			default:
-				panic("wrong operator");
-			}
-
-			Array* arr = new Array();
-			*arr = strToArray(LiteralString{ c });
-			ret.type = tStr;
-			ret.ptr = hAlloc(Object{ 1, OSB, (void*)arr });
-			}
 		else if (isStr(ret.type) && isUNum(p.type)) {
 			const char* a, * c;
 			ull b;
@@ -1806,19 +1859,20 @@ Pointer runExpr12(Expr12 e) {
 			if(ret.type.kind != FUNC) 
 				panic("cannot call function: it is not function");
 			ptr1 = (FCall*)ptr;
-			runFCall(ret, *ptr1);
+			ret = runFCall(ret, *ptr1);
 			break;
 		case OSB:
 			if(ret.type.kind != OSB) 
 				panic("it is not array");
 			ptr2 = (Idx*)ptr;
-			runIdx(ret, *ptr2);
+			ret = runIdx(ret, *ptr2);
 			break;
 		case DOT:
 			if(ret.type.kind != WORD) {
 				panic("it is not instance");
 			}
 			ptr3 = (Word*)ptr;
+			ret = runMember(ret, *ptr3);
 		default:
 			panic("wrong operator");
 		}
@@ -1830,6 +1884,8 @@ Pointer runFactor(Factor e) {
 	Array *arr;
 	Closure *cl;
 
+	ret.lv = false;
+	
 	Var v;
 	switch(e.kind) {
 	case OBR:
@@ -1870,9 +1926,8 @@ Pointer runFactor(Factor e) {
 	case OSB:
 		arr = new Array();
 		*arr = makeArray(*(LiteralArray*)e.ptr);
-		ret.ptr = hAlloc(Object{ 1, OSB, arr });
+		ret.ptr = sAccess(hAlloc(Object{ 1, OSB, arr }));
 		ret.type = Type{ OSB, "", {arr->etype} };
-		sAccess(ret.ptr) = proc.org.size() - 1;
 		break;
 	case LTRUE:
 		ret.type = tBool;
@@ -1888,7 +1943,7 @@ Pointer runFactor(Factor e) {
 		cl = new Closure();
 		*cl = makeClosure(*(DefFunc*)e.ptr, nil);
 		ret.type = fnToType(*(DefFunc*)e.ptr);
-		ret.ptr = hAlloc(Object{ 1, FUNC, cl });
+		ret.ptr = sAccess(hAlloc(Object{ 1, FUNC, cl }));
 		break;
 	default:
 		panic("unknwon factor");
@@ -2022,6 +2077,7 @@ Array makeArray(LiteralArray arr) {
 }
 void destroy(Pointer ptr) {
 	if (isPriType(ptr.type)) return;
+	if (sAccess(ptr.ptr) == 0) return;
 
 	Object& obj = hAccess(sAccess(sAccess(ptr.ptr)));
 	obj.cnt--;
