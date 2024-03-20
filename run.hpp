@@ -262,8 +262,10 @@ Pointer runNFunc(NFunc fn, FCall args) {
 	panic("unknown nested function");
 }
 void point(Pointer ptr) {
-	if (isPriType(ptr.type)) return;
-	Object &obj = hAccess(access(access(ptr.ptr)));
+	ll p = access(ptr.ptr);
+	if (p >= 0) return;
+
+	Object &obj = hAccess(p);
 	obj.cnt++;
 }
 void chkMem() {
@@ -643,7 +645,14 @@ void assign(Pointer dst, Pointer src) {
 	if(!dst.lv) panic("cannot assign: dst is not lvalue");
 	if(!isAssignable(dst.type, src.type)) panic("cannot assign: type mismatch");
 
-	access(dst.ptr) = access(src.ptr);
+	if (isPriType(dst.type))
+		access(dst.ptr) = access(src.ptr);
+	else {
+		point(src);
+		destroy(dst);
+
+		hAccess(access(dst.ptr)) = hAccess(access(src.ptr));
+	}
 }
 void newVar(Var var) {
 	if(strlen(var.name) > 0 && isExists(var.name)) panicf("cannot create var: %s is already exists", var.name);
@@ -858,6 +867,9 @@ Pointer runFCall(Pointer fn, FCall args) {
 
 
 		runBlockStmt(c.fn.body, jp);
+		proc.STACK.top().RET = nil;
+
+		longjmp(jp, 1);
 		return nil;
 	}
 	else if(jv == 1) {
@@ -2207,20 +2219,28 @@ void destroyArray(Array arr) {
 	if (isPriType(arr.etype)) return;
 
 	for (int i = 0; i < arr.array.size(); i++) {
-		destroy(Pointer{ arr.etype, false,arr.array[i] });
+		auto p = sAlloc(1);
+		sAccess(p) = arr.array[i];
+
+		destroy(Pointer{ arr.etype, false,p });
 	}
 }
 void destroyClosure(Closure cl) {
-	for (int i = 0; i < cl.cap.size(); i++) {
-		destroy(cl.cap[i]);
+	for (int i = 1; i < cl.cap.size(); i++) {
+		auto p = sAlloc(1);
+		sAccess(p) = cl.cap[i].ptr;
+
+		destroy(Pointer{ cl.cap[i].type, false, p});
 	}
 }
 void destroyInstance(Instance in) {
 	for (int i = 0; i < in.fields.size(); i++) {
 		auto type = in.df.field[i].type;
 		auto ptr = in.fields[i].second;
+		auto p = sAlloc(1);
+		sAccess(p) = ptr;
 
-		destroy(Pointer{ type, false, ptr });
+		destroy(Pointer{ type, false, p });
 	}
 }
 const char* arrayToStr(Array arr) {
