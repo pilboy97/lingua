@@ -127,7 +127,7 @@ struct LiteralArray {
 };
 struct LiteralObject {
     Type type;
-    std::vector<std::pair<const char*, Expr> > value;
+    InitList init;
 };
 struct Stmt {
     int kind;
@@ -142,7 +142,7 @@ struct IfStmt {
 };
 struct ForStmt {
     Expr_1 *init;
-    Expr_1 cond;
+    Expr_1 *cond;
     Expr_1 *act;
 
     BlockStmt body;
@@ -257,8 +257,6 @@ DefFunc parseLambda() {
         must(CSB);
     }
 
-    ret.frame.push_back(std::make_pair("", Type{0}));
-
     must(OBR);
     while(header < code.size() && code[header].kind != CBR) {
         const char* name = must(WORD).str;
@@ -269,7 +267,7 @@ DefFunc parseLambda() {
     must(CBR);
 
     if(chk(ARROW)) {
-        ret.frame[0].second = parseType();
+        ret.ret = parseType();
     }
 
     ret.body = parseBlockStmt();
@@ -322,9 +320,9 @@ Factor parseFactor() {
 
         if(chk(OBL)) {
             header--;
-            InitList *p = new InitList();
-            *p = parseInitList();
-            p->tname = neo->word;
+            LiteralObject* p = new LiteralObject();
+            p->type = Type{ WORD, neo->word, {} };
+            p->init = parseInitList();
 
             return Factor{OBL, p};
         }
@@ -356,6 +354,9 @@ Factor parseFactor() {
     }
     else if(chk(LFALSE)) {
         return Factor {LFALSE, NULL};
+    }
+    else if (chk(THIS)) {
+        return Factor{ THIS, NULL };
     }
     else if(chk(FUNC)) {
         header--;
@@ -679,6 +680,9 @@ BlockStmt parseBlockStmt() {
 }
 ForStmt parseForStmt() {
     ForStmt ret;
+    ret.init = NULL;
+    ret.cond = NULL;
+    ret.act = NULL;
 
     must(FOR);
     if (header < code.size() && code[header].kind != OBL) {
@@ -686,9 +690,9 @@ ForStmt parseForStmt() {
         *e = parseExpr_1();
 
         if(chk(SCOLON)) {
-            Expr_1 cond, *act = new Expr_1();
+            Expr_1 *cond = new Expr_1(), * act = new Expr_1();
 
-            cond = parseExpr_1();
+            *cond = parseExpr_1();
             must(SCOLON);
             *act = parseExpr_1();
 
@@ -697,7 +701,7 @@ ForStmt parseForStmt() {
             ret.act = act;
         } else {
             ret.init = NULL;
-            ret.cond = *e;
+            ret.cond = e;
             ret.act = NULL;
         }
     }

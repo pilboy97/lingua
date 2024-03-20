@@ -106,6 +106,7 @@ void initDict() {
     kDict.push("}", CBL);
     kDict.push("class", CLASS);
     kDict.push("interface", INTERFACE);
+    kDict.push("this", THIS);
     kDict.push("func", FUNC);
     kDict.push("var", VAR);
     kDict.push("if", IF);

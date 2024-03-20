@@ -25,6 +25,7 @@ struct Var {
 struct Frame {
 	Type rtype;
 	Pointer RET;
+	Pointer This;
 	std::vector<std::vector<Var>> vars;
 };
 struct Object {
@@ -41,11 +42,11 @@ struct Array {
 };
 struct Instance {
 	Type type;
-	DefClass *df;
+	DefClass df;
 	std::vector<std::pair<const char *, ll>> fields;
 };
 struct Data {
-	int value;
+	ll value;
 };
 struct NFunc {
 	const char* name;
@@ -93,9 +94,11 @@ bool isNull(Pointer ptr);
 
 void run(Program prog);
 
+Pointer pAccess(Pointer x);
 ll hAlloc(Object o);
 ll sAlloc(int size);
 Object& hAccess(ll ptr);
+ll& access(ll ptr);
 ll& sAccess(ll ptr);
 ll& gAccess(ll ptr);
 
@@ -133,6 +136,7 @@ Var makeVar(const char* name, Pointer x);
 Var makeDefault(const char *name, Type type);
 
 Array makeArray(LiteralArray arr);
+Instance makeInstance(LiteralObject obj);
 
 Pointer converse(Pointer x, Type type);
 
@@ -202,35 +206,40 @@ Pointer runExpr12(Expr12 e);
 Pointer runFactor(Factor e);
 
 Pointer runNFunc(NFunc fn, FCall args) {
-	if (strcmp(fn.name, "println") == 0) {
-		if (args.list.size() != 1) {
-			panic("cannot call println: argument mismatch");
-		}
-
-		Array arr = toArray(runExpr(args.list[0]));
-		if (arr.etype.kind != BYTE) {
-			panic("cannot call println: argument is not []byte");
-		}
-
-		for (int i = 0; i < arr.array.size(); i++) {
-			putchar(arr.array[i]);
-		}
-		puts("");
-
-		return nil;
-	}
 	if (strcmp(fn.name, "print") == 0) {
 		if (args.list.size() != 1) {
 			panic("cannot call print: argument mismatch");
 		}
+		Pointer ptr = runExpr(args.list[0]);
 
-		Array arr = toArray(runExpr(args.list[0]));
+		if (!isStr(ptr.type)) {
+			panic("print: argument is not string");
+		}
+
+		Array arr = toArray(ptr);
 		if (arr.etype.kind != BYTE) {
 			panic("cannot call print: argument is not []byte");
 		}
 
 		for (int i = 0; i < arr.array.size(); i++) {
-			putchar(arr.array[i]);
+			if(arr.array[i] != '\\')
+				putchar(arr.array[i]);
+			else {
+				if (i + 1 >= arr.array.size())
+					panic("wrong escape char");
+
+				switch (arr.array[i+1]) {
+				case 't':
+					putchar('\t');
+					break;
+				case 'n':
+					putchar('\n');
+					break;
+				default:
+					panic("wrong escape char");
+				}
+				i++;
+			}
 		}
 
 		return nil;
@@ -245,7 +254,7 @@ Pointer runNFunc(NFunc fn, FCall args) {
 		Pointer ret;
 		ret.type = tNum;
 		ret.ptr = sAlloc(1);
-		sAccess(ret.ptr) = arr.array.size();
+		access(ret.ptr) = arr.array.size();
 
 		return ret;
 	}
@@ -254,7 +263,7 @@ Pointer runNFunc(NFunc fn, FCall args) {
 }
 void point(Pointer ptr) {
 	if (isPriType(ptr.type)) return;
-	Object &obj = hAccess(sAccess(sAccess(ptr.ptr)));
+	Object &obj = hAccess(access(access(ptr.ptr)));
 	obj.cnt++;
 }
 void chkMem() {
@@ -295,21 +304,6 @@ void initProc() {
 	proc.mem.push_back(0);
 	proc.mem.push_back(0);
 
-	NFunc* println = new NFunc{ "println", Type{0}, {Type{OSB,"",{tByte}}} };
-	newGVar(makeVar("println", 
-		Pointer{
-			Type{
-				FUNC,
-				"",
-				{
-				Type{0},
-				Type{OSB,"",{tByte}}
-				}
-			}, 
-			false,
-			hAlloc(Object{1, 0, println})
-		}
-	));
 	NFunc* print = new NFunc{ "print", Type{0}, {Type{OSB,"",{tByte}}} };
 	newGVar(makeVar("print",
 		Pointer{
@@ -380,15 +374,15 @@ void runDefFunc(DefFunc df) {
 
 	int ptr = hAlloc(o);
 
-	newVar(Var{c->fn.name,fnToType(c->fn), ptr});
+	newGVar(Var{c->fn.name,fnToType(c->fn), ptr});
 }
 void runDefClass(DefClass df) {
 	proc.CLASS.push_back(df);
-	newVar(Var{"",nil.type, 0});
+	newGVar(Var{"",nil.type, 0});
 }
 void runDefInterface(DefInterface df) {
 	proc.INTERFACE.push_back(df);
-	newVar(Var{"",nil.type, 0});
+	newGVar(Var{"",nil.type, 0});
 }
 void validType(Type x) {
 	if (isPriType(x) && x.add.size() != 0) {
@@ -491,7 +485,7 @@ Pointer getVar(const char* name) {
 	for (int i = 0; i < proc.Global.size(); i++) {
 		auto v = proc.Global[i];
 		if (strcmp(v.name, name) == 0) {
-			return Pointer{ v.type, true, gAccess(v.ptr) };
+			return Pointer{ v.type, true, v.ptr };
 		}
 	}
 
@@ -541,28 +535,44 @@ Var makeDefault(const char *name, Type type) {
 		return Var{ name, type, ptr };
 	}
 	ptr = sAlloc(1);
-	sAccess(ptr) = 0;
-	return Var{name, type, ptr};
+	access(ptr) = 0;
+	ll ptr2 = sAlloc(1);
+	access(ptr2) = ptr;
+	return Var{name, type, ptr2};
 }
 
+Pointer pAccess(Pointer x) {
+	return Pointer{ x.type, x.lv, access(x.ptr) };
+}
+ll& access(ll ptr) {
+	if (ptr > 0) return sAccess(ptr);
+
+	Object d = hAccess(ptr);
+	if (d.kind != NUM)
+		panic("access: not data");
+
+	return (*(Data*)d.ptr).value;
+}
 ll& sAccess(ll ptr) {
 	if(!
 		(
 			(proc.SP < ptr && ptr < proc.ESP)||
 			(0<ptr&&ptr<proc.GP)
 		)
-	) panic("invalid pointer");
+	)
+		panic("sAccess: invalid pointer");
 
 	return proc.mem[ptr];
 }
 ll& gAccess(ll ptr) {
-	if (!(0 < ptr && ptr < proc.GP)) panic("invalid pointer");
+	if (!(0 < ptr && ptr < proc.GP)) panic("gAccess: invalid pointer");
 
 	return proc.mem[ptr];
 }
 Object& hAccess(ll ptr) {
 	ptr = -ptr;
-	if(!(0 < ptr && ptr < proc.org.size())) panic("invalid pointer");
+	if(!(0 < ptr && ptr < proc.org.size()))
+		panic("hAccess: invalid pointer");
 
 	return proc.org[ptr];
 }
@@ -582,10 +592,8 @@ ll hAlloc(Object obj) {
 	proc.org.push_back(obj);
 
 	int p = sAlloc(1);
-	sAccess(p) = -ret;
-	int p2 = sAlloc(1);
-	sAccess(p2) = p;
-	return p2;
+	access(p) = -ret;
+	return p;
 }
 ll cpObj(Object obj) {
 	Object neo;
@@ -635,7 +643,7 @@ void assign(Pointer dst, Pointer src) {
 	if(!dst.lv) panic("cannot assign: dst is not lvalue");
 	if(!isAssignable(dst.type, src.type)) panic("cannot assign: type mismatch");
 
-	sAccess(dst.ptr) = sAccess(src.ptr);
+	access(dst.ptr) = access(src.ptr);
 }
 void newVar(Var var) {
 	if(strlen(var.name) > 0 && isExists(var.name)) panicf("cannot create var: %s is already exists", var.name);
@@ -648,15 +656,9 @@ void newGVar(Var var) {
 	proc.Global.push_back(var);
 }
 Var makeVar(const char *name, Pointer ptr) {
-	if (!isPriType(ptr.type)) {
-		ll p = sAlloc(1);
-		sAccess(p) = ptr.ptr;
+	ll p = ptr.ptr;
 
-		return Var{ name, ptr.type, p };
-	}
-	else {
-		return Var{ name, ptr.type, ptr.ptr };
-	}
+	return Var{ name, ptr.type, p };
 }
 Type fnToType(DefFunc fn) {
 	Type ret;
@@ -715,10 +717,10 @@ void runStmt(Stmt stmt, jmp_buf jmp) {
 	case RETURN:
 		runRetStmt(*(RetStmt*)stmt.stmt, jmp);
 		break;
-	case CONTINUE:
+	case BREAK:
 		longjmp(jmp, 2);
 		break;
-	case BREAK:
+	case CONTINUE:
 		longjmp(jmp, 3);
 		break;
 	}
@@ -743,9 +745,9 @@ void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
 		auto s = stmt.childs[i];
 
 		jmp_buf aj;
-		int av = setjmp(aj);
-		if(av == 0)
-			runStmt(s, jmp);
+		int av;
+		if((av=setjmp(aj)) == 0)
+			runStmt(s, aj);
 		else {
 			exitScope();
 			longjmp(jmp, av);
@@ -759,13 +761,16 @@ void runForStmt(ForStmt stmt, jmp_buf jmp) {
 	}
 
 	while(true) {
-		auto p = runExpr_1(stmt.cond);
-		if(!toBool(p)) break;
+		if (stmt.cond != NULL) {
+			auto p = runExpr_1(*stmt.cond);
+			if (!toBool(p))
+				break;
+		}
 
 		jmp_buf jp;
-		int jv = setjmp(jp);
+		int jv;
 
-		if(jv == 0) {
+		if((jv = setjmp(jp)) == 0) {
 			runBlockStmt(stmt.body, jp);
 		}
 		else if(jv == 1) {
@@ -780,6 +785,9 @@ void runForStmt(ForStmt stmt, jmp_buf jmp) {
 			// continue
 			continue;
 		}
+
+		if(stmt.act != NULL)
+			runExpr_1(*stmt.act);
 	}
 }
 void runRetStmt(RetStmt stmt, jmp_buf jmp) {
@@ -800,44 +808,52 @@ Pointer runFCall(Pointer fn, FCall args) {
 	Pointer ret;
 
 	jmp_buf jp;
-	int jv = setjmp(jp);
+	int jv;
 
-	if(jv == 0) {
+	if((jv=setjmp(jp)) == 0) {
+		std::vector<Pointer> caps;
 		std::vector<Pointer> pargs;
+
 		for(int i = 0;i < args.list.size();i++) {
-			pargs.push_back(runExpr(args.list[i]));
+			auto ptr = runExpr(args.list[i]);
+			pargs.push_back(pAccess(ptr));
+			point(ptr);
+		}
+
+		for (int i = 1; i < c.cap.size(); i++) {
+			auto cap = c.cap[i];
+			caps.push_back(pAccess(cap));
+			point(c.cap[i]);
 		}
 
 		proc.STACK.push(Frame());
 		proc.STACK.top().vars.emplace_back();
 
-		for (int i = 1; i < c.cap.size(); i++) {
-			auto ptr = c.cap[i];
-			point(ptr);
-		}
-
-		for (int i = 0; i < pargs.size(); i++) {
-			auto ptr = pargs[i];
-			point(ptr);
-		}
+		if (c.cap[0].ptr != 0)
+			proc.STACK.top().This = pAccess(c.cap[0]);
+		else
+			proc.STACK.top().This = nil;
 
 		int ptr = sAlloc(1);
-		sAccess(ptr) = proc.SP;
+		access(ptr) = proc.SP;
 		proc.SP = proc.ESP - 1;
 
-		newVar(makeVar("", c.cap[0]));
 		for(int i = 1;i < c.cap.size();i++) {
 			auto ptr = c.cap[i];
-			auto name = c.fn.captured[i];
+			auto name = c.fn.captured[i-1];
 
 			newVar(makeVar(name, ptr));
 		}
 
 		for(int i = 0;i < pargs.size();i++) {
 			auto name = c.fn.frame[i].first;
-			auto ptr = pargs[i];
+			auto v = pargs[i];
+			Pointer p;
+			p.type = v.type;
+			p.ptr = sAlloc(1);
+			sAccess(p.ptr) = v.ptr;
 
-			newVar(makeVar(name, ptr));
+			newVar(makeVar(name, p));
 		}
 
 
@@ -867,43 +883,42 @@ bool toBool(Pointer p) {
 		panic("toBool: it is not bool");
 	}
 
-	return (bool)sAccess(p.ptr);
+	return (bool)access(p.ptr);
 }
 char toByte(Pointer p) {
 	if(p.type.kind != BYTE) {
 		panic("toByte: it is not byte");
 	}
 
-	return (char)sAccess(p.ptr);
+	return (char)access(p.ptr);
 }
 ll toNum(Pointer p) {
 	if(p.type.kind != NUM) {
 		panic("toNum: it is not num");
 	}
 
-	return (ll)sAccess(p.ptr);
+	return (ll)access(p.ptr);
 }
 ull toUNum(Pointer p) {
 	if(p.type.kind != UNUM) {
 		panic("toUNum: it is not unum");
 	}
 
-	return (ull)sAccess(p.ptr);
+	return (ull)access(p.ptr);
 }
 double toReal(Pointer p) {
 	if(p.type.kind != REAL) {
 		panic("toUNum: it is not unum");
 	}
 
-	return *(double*)((void*) & sAccess(p.ptr));
+	return *(double*)((void*) & access(p.ptr));
 }
 Closure toClosure(Pointer p) {
 	if(p.type.kind != FUNC) {
 		panic("toClosure: it is not function");
 	}
 
-	int ptr = sAccess(sAccess(p.ptr));
-	Object obj = hAccess(ptr);
+	Object obj = hAccess(sAccess(p.ptr));
 	if (obj.kind == 0) {
 		Closure ret;
 		NFunc *nf = (NFunc*)obj.ptr;
@@ -927,7 +942,7 @@ Array toArray(Pointer p) {
 		panic("toArray: it is not array");
 	}
 
-	int ptr = sAccess(sAccess(p.ptr));
+	int ptr = access(p.ptr);
 
 	return *(Array*)hAccess(ptr).ptr;
 }
@@ -936,7 +951,7 @@ Instance toInstance(Pointer p) {
 		panic("toInstance: it is not object");
 	}
 
-	int ptr = sAccess(sAccess(p.ptr));
+	int ptr = access(p.ptr);
 
 	return *(Instance*)hAccess(ptr).ptr;
 }
@@ -953,12 +968,14 @@ Pointer runExpr_1(Expr_1 e) {
 	return nil;
 }
 Pointer runExpr(Expr e) {
-	Pointer ret = runExpr1(e.childs[0]);
-	validType(ret.type);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr1(e.childs[0]);
+	validType(init.type);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
 
 	if(toBool(ret)) {
-		sAccess(ret.ptr) = true;
+		access(ret.ptr) = true;
 		return ret;
 	}
 
@@ -966,13 +983,13 @@ Pointer runExpr(Expr e) {
 		Pointer p = runExpr1(e.childs[i]);
 
 		if(toBool(p)) {
-			sAccess(ret.ptr) = true;
+			access(ret.ptr) = true;
 			return ret;
 		}
 	}
 
 	ret.type = tBool;
-	sAccess(ret.ptr) = false;
+	access(ret.ptr) = false;
 	validType(ret.type);
 	return ret;
 }
@@ -987,18 +1004,21 @@ Pointer runExpr1(Expr1 e) {
 	for(int i = 0;i < e.childs.size();i++) {
 		auto p = runExpr2(e.childs[i]);
 		if(!toBool(p)) {
-			sAccess(ret.ptr) = false;
+			access(ret.ptr) = false;
 			return ret;
 		}
 	}
 
 	ret.type = tBool;
-	sAccess(ret.ptr) = false;
+	access(ret.ptr) = false;
 	return ret;
 }
 Pointer runExpr2(Expr2 e) {
-	Pointer ret = runExpr3(e.childs[0]);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr3(e.childs[0]);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto p = runExpr3(e.childs[i]);
@@ -1009,7 +1029,7 @@ Pointer runExpr2(Expr2 e) {
 			c = a | b;
 
 			ret.type = tNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
@@ -1018,7 +1038,7 @@ Pointer runExpr2(Expr2 e) {
 			c = a | b;
 
 			ret.type = tUNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if (isByte(ret.type) && isByte(p.type)) {
 			char a, b, c;
@@ -1027,7 +1047,7 @@ Pointer runExpr2(Expr2 e) {
 			c = a | b;
 
 			ret.type = tByte;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else {
 			panic("runExpr2: cannot calc: type mismatch");
@@ -1037,9 +1057,12 @@ Pointer runExpr2(Expr2 e) {
 	return ret;
 }
 Pointer runExpr3(Expr3 e) {
-	Pointer ret = runExpr4(e.childs[0]);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr4(e.childs[0]);
+	if(e.childs.size() == 1) return init;
 
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
+	
 	for(int i = 1;i < e.childs.size();i++) {
 		auto p = runExpr4(e.childs[i]);
 		if(isNum(ret.type) && isNum(p.type)) {
@@ -1049,7 +1072,7 @@ Pointer runExpr3(Expr3 e) {
 			c = a ^ b;
 
 			ret.type = tNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
@@ -1058,7 +1081,7 @@ Pointer runExpr3(Expr3 e) {
 			c = a ^ b;
 
 			ret.type = tUNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if (isByte(ret.type) && isByte(p.type)) {
 			char a, b, c;
@@ -1067,7 +1090,7 @@ Pointer runExpr3(Expr3 e) {
 			c = a ^ b;
 
 			ret.type = tByte;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else {
 			panic("runExpr3: cannot calc: type mismatch");
@@ -1077,8 +1100,11 @@ Pointer runExpr3(Expr3 e) {
 	return ret;
 }
 Pointer runExpr4(Expr4 e) {
-	Pointer ret = runExpr5(e.childs[0]);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr5(e.childs[0]);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto p = runExpr5(e.childs[i]);
@@ -1089,7 +1115,7 @@ Pointer runExpr4(Expr4 e) {
 			c = a & b;
 
 			ret.type = tNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
@@ -1098,7 +1124,7 @@ Pointer runExpr4(Expr4 e) {
 			c = a & b;
 
 			ret.type = tUNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if (isByte(ret.type) && isByte(p.type)) {
 			char a, b, c;
@@ -1107,7 +1133,7 @@ Pointer runExpr4(Expr4 e) {
 			c = a & b;
 
 			ret.type = tByte;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else {
 			panic("runExpr4: cannot calc: type mismatch");
@@ -1117,8 +1143,11 @@ Pointer runExpr4(Expr4 e) {
 	return ret;
 }
 Pointer runExpr5(Expr5 e) {
-	Pointer ret = runExpr6(e.childs[0].second);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr6(e.childs[0].second);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto duo = e.childs[i];
@@ -1137,7 +1166,7 @@ Pointer runExpr5(Expr5 e) {
 			else
 				c = (a != b);
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
@@ -1151,7 +1180,7 @@ Pointer runExpr5(Expr5 e) {
 			else
 				c = (a != b);
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else if(isByte(ret.type) && isByte(p.type)) {
@@ -1167,7 +1196,7 @@ Pointer runExpr5(Expr5 e) {
 				c = (a != b);
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else if(isReal(ret.type) && isReal(p.type)) {
@@ -1184,7 +1213,7 @@ Pointer runExpr5(Expr5 e) {
 				c = (a != b);
 			}
 			
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else if(isBool(ret.type) && isBool(p.type)) {
@@ -1199,7 +1228,7 @@ Pointer runExpr5(Expr5 e) {
 				c = (a != b);
 			}
 			
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else {
@@ -1210,8 +1239,11 @@ Pointer runExpr5(Expr5 e) {
 	return ret;
 }
 Pointer runExpr6(Expr6 e) {
-	Pointer ret = runExpr7(e.childs[0].second);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr7(e.childs[0].second);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto duo = e.childs[i];
@@ -1242,7 +1274,7 @@ Pointer runExpr6(Expr6 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
@@ -1268,7 +1300,7 @@ Pointer runExpr6(Expr6 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else if(isByte(ret.type) && isByte(p.type)) {
@@ -1294,7 +1326,7 @@ Pointer runExpr6(Expr6 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else if (isReal(ret.type) && isReal(p.type)) {
@@ -1320,7 +1352,7 @@ Pointer runExpr6(Expr6 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tBool;
 		}
 		else {
@@ -1331,8 +1363,11 @@ Pointer runExpr6(Expr6 e) {
 	return ret;
 }
 Pointer runExpr7(Expr7 e) {
-	Pointer ret = runExpr8(e.childs[0].second);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr8(e.childs[0].second);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto duo = e.childs[i];
@@ -1356,7 +1391,7 @@ Pointer runExpr7(Expr7 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tNum;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
@@ -1375,7 +1410,7 @@ Pointer runExpr7(Expr7 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tUNum;
 		}
 		else if(isByte(ret.type) && isByte(p.type)) {
@@ -1394,7 +1429,7 @@ Pointer runExpr7(Expr7 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 			ret.type = tByte;
 		}
 		else {
@@ -1405,8 +1440,11 @@ Pointer runExpr7(Expr7 e) {
 	return ret;
 }
 Pointer runExpr8(Expr8 e) {
-	Pointer ret = runExpr9(e.childs[0].second);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr9(e.childs[0].second);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto duo = e.childs[i];
@@ -1431,13 +1469,13 @@ Pointer runExpr8(Expr8 e) {
 			}
 
 			ret.type = tNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
 			a = toUNum(ret);
 			b = toUNum(p);
-			
+
 			switch(kind) {
 			case ADD:
 				c = (a + b);
@@ -1450,7 +1488,7 @@ Pointer runExpr8(Expr8 e) {
 			}
 
 			ret.type = tUNum;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if(isByte(ret.type) && isByte(p.type)) {
 			char a,b,c;
@@ -1469,7 +1507,7 @@ Pointer runExpr8(Expr8 e) {
 			}
 
 			ret.type = tByte;
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if (isReal(ret.type) && isReal(p.type)) {
 			double a, b, c;
@@ -1618,8 +1656,11 @@ Pointer runExpr8(Expr8 e) {
 	return ret;
 }
 Pointer runExpr9(Expr9 e) {
-	Pointer ret = runExpr10(e.childs[0].second);
-	if(e.childs.size() == 1) return ret;
+	Pointer init = runExpr10(e.childs[0].second);
+	if(e.childs.size() == 1) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.childs.size();i++) {
 		auto duo = e.childs[i];
@@ -1646,7 +1687,7 @@ Pointer runExpr9(Expr9 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if(isUNum(ret.type) && isUNum(p.type)) {
 			ull a,b,c;
@@ -1667,7 +1708,7 @@ Pointer runExpr9(Expr9 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if(isByte(ret.type) && isByte(p.type)) {
 			char a,b,c;
@@ -1688,7 +1729,7 @@ Pointer runExpr9(Expr9 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else if (isReal(ret.type) && isReal(p.type)) {
 			double a, b, c;
@@ -1706,7 +1747,7 @@ Pointer runExpr9(Expr9 e) {
 				panic("wrong operator");
 			}
 
-			sAccess(ret.ptr) = c;
+			access(ret.ptr) = c;
 		}
 		else {
 			panic("runExpr9: cannot calc: type mismatch");
@@ -1718,22 +1759,22 @@ Pointer runExpr9(Expr9 e) {
 Pointer converse(Pointer x, Type type) {
 	Pointer ret;
 	if(isPriType(x.type) && isPriType(type)) {
-		long long value = sAccess(x.ptr);
+		long long value = access(x.ptr);
 		ret.ptr = sAlloc(1);
 		ret.type = type;
 		switch (type.kind)
 		{
 		case BOOL:
-			sAccess(ret.ptr) = value & 1;
+			access(ret.ptr) = value & 1;
 			break;
 		case BYTE:
-			sAccess(ret.ptr) = value & 0xFF;
+			access(ret.ptr) = value & 0xFF;
 			break;
 		case NUM:
-			sAccess(ret.ptr) = value;
+			access(ret.ptr) = value;
 			break;
 		case UNUM:
-			sAccess(ret.ptr) = value;
+			access(ret.ptr) = value;
 			break;
 		default:
 			break;
@@ -1749,8 +1790,11 @@ Pointer converse(Pointer x, Type type) {
 	return nil;
 }
 Pointer runExpr10(Expr10 e) {
-	Pointer ret = runExpr11(e.child);
-	if(e.oper.size() == 0) return ret;
+	Pointer init = runExpr11(e.child);
+	if(e.oper.size() == 0) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.oper.size();i++) {
 		auto duo = e.oper[i];
@@ -1762,22 +1806,22 @@ Pointer runExpr10(Expr10 e) {
 			if(ret.ptr == 0) {
 				ret.ptr = sAlloc(1);
 				ret.type = tBool;
-				sAccess(ret.ptr) = true;
+				access(ret.ptr) = true;
 			}
 			else {
 				ret.type = tBool;
-				sAccess(ret.ptr) = false;
+				access(ret.ptr) = false;
 			}
 			return ret;
 		case LNOT:
 			if(ret.ptr == 0) {
 				ret.ptr = sAlloc(1);
 				ret.type = tBool;
-				sAccess(ret.ptr) = false;
+				access(ret.ptr) = false;
 			}
 			else {
 				ret.type = tBool;
-				sAccess(ret.ptr) = true;
+				access(ret.ptr) = true;
 			}
 			return ret;
 		case AS:
@@ -1786,15 +1830,15 @@ Pointer runExpr10(Expr10 e) {
 		case IS:
 			if(ret.ptr == 0) {
 				ret.ptr = sAlloc(1);
-				sAccess(ret.ptr) = false;
+				access(ret.ptr) = false;
 			}
 			else if(isAssignable(type, ret.type)) {
 				ret.type = tBool;
-				sAccess(ret.ptr) = true;
+				access(ret.ptr) = true;
 			}
 			else {
 				ret.type = tBool;
-				sAccess(ret.ptr) = false;
+				access(ret.ptr) = false;
 			}
 			return ret;
 		default:
@@ -1805,8 +1849,11 @@ Pointer runExpr10(Expr10 e) {
 	return ret;
 }
 Pointer runExpr11(Expr11 e) {
-	Pointer ret = runExpr12(e.child);
-	if(e.oper.size() == 0) return ret;
+	Pointer init = runExpr12(e.child);
+	if(e.oper.size() == 0) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 1;i < e.oper.size();i++) {
 		auto kind = e.oper[i];
@@ -1814,17 +1861,17 @@ Pointer runExpr11(Expr11 e) {
 		switch (kind) {
 			case NOT:
 				if(isNum(ret.type)  || isUNum(ret.type) || isByte(ret.type)) {
-					sAccess(ret.ptr) = ~sAccess(ret.ptr);
+					access(ret.ptr) = ~access(ret.ptr);
 				}
 				else panic("cannot execute ~ operator");
 			case LNOT:
 				if(!isBool(ret.type)) {
 					panic("cannot execute not operator");
 				}
-				sAccess(ret.ptr) = (sAccess(ret.ptr) == 0) ? 1 : 0;
+				access(ret.ptr) = (access(ret.ptr) == 0) ? 1 : 0;
 			case SUB:
 				if(isNum(ret.type) || isByte(ret.type)) {
-					sAccess(ret.ptr) = -sAccess(ret.ptr);
+					access(ret.ptr) = -access(ret.ptr);
 				}
 				else {
 					panic("cannot execute negative operator");
@@ -1838,8 +1885,11 @@ Pointer runExpr11(Expr11 e) {
 	return ret;
 }
 Pointer runExpr12(Expr12 e) {
-	Pointer ret = runFactor(e.f);
-	if(e.childs.size() == 0) return ret;
+	Pointer init = runFactor(e.f);
+	if(e.childs.size() == 0) return init;
+
+	Pointer ret = Pointer{ init.type, init.lv, sAlloc(1) };
+	sAccess(ret.ptr) = sAccess(init.ptr);
 
 	for(int i = 0;i < e.childs.size();i++) {
 		auto duo = e.childs[i];
@@ -1876,6 +1926,7 @@ Pointer runExpr12(Expr12 e) {
 			}
 			ptr3 = (Word*)ptr;
 			ret = runMember(ret, *ptr3);
+			break;
 		default:
 			panic("wrong operator");
 		}
@@ -1886,6 +1937,7 @@ Pointer runFactor(Factor e) {
 	Pointer ret;
 	Array *arr;
 	Closure *cl;
+	Instance* ins;
 
 	ret.lv = false;
 	
@@ -1897,17 +1949,17 @@ Pointer runFactor(Factor e) {
 	case LNUM:
 		ret.type = tNum;
 		ret.ptr = sAlloc(1);
-		sAccess(ret.ptr) = ((Number*)e.ptr)->value;
+		access(ret.ptr) = ((Number*)e.ptr)->value;
 		break;
 	case LUNUM:
 		ret.type = tUNum;
 		ret.ptr = sAlloc(1);
-		sAccess(ret.ptr) = ((Number*)e.ptr)->value;
+		access(ret.ptr) = ((Number*)e.ptr)->value;
 		break;
 	case LBYTE:
 		ret.type = tByte;
 		ret.ptr = sAlloc(1);
-		sAccess(ret.ptr) = ((Number*)e.ptr)->value;
+		access(ret.ptr) = ((Number*)e.ptr)->value;
 		break;
 	case LSTR:
 		arr = new Array();
@@ -1929,24 +1981,35 @@ Pointer runFactor(Factor e) {
 	case OSB:
 		arr = new Array();
 		*arr = makeArray(*(LiteralArray*)e.ptr);
-		ret.ptr = sAccess(hAlloc(Object{ 1, OSB, arr }));
+		ret.ptr = hAlloc(Object{ 1, OSB, arr });
 		ret.type = Type{ OSB, "", {arr->etype} };
+		break;
+	case OBL:
+		ins = new Instance();
+		*ins = makeInstance(*(LiteralObject*)e.ptr);
+		ret.ptr = hAlloc(Object{ 1, OBL, ins });
+		ret.type = Type{ WORD, ins->df.name, {} };
 		break;
 	case LTRUE:
 		ret.type = tBool;
 		ret.ptr = sAlloc(1);
-		sAccess(ret.ptr) = true;
+		access(ret.ptr) = true;
 		break;
 	case LFALSE:
 		ret.type = tBool;
 		ret.ptr = sAlloc(1);
-		sAccess(ret.ptr) = false;
+		access(ret.ptr) = false;
 		break;
 	case FUNC:
 		cl = new Closure();
 		*cl = makeClosure(*(DefFunc*)e.ptr, nil);
 		ret.type = fnToType(*(DefFunc*)e.ptr);
-		ret.ptr = sAccess(hAlloc(Object{ 1, FUNC, cl }));
+		ret.ptr = hAlloc(Object{ 1, FUNC, cl });
+		break;
+	case THIS:
+		ret.type = proc.STACK.top().This.type;
+		ret.ptr = sAlloc(1);
+		sAccess(ret.ptr) = proc.STACK.top().This.ptr;
 		break;
 	default:
 		panic("unknwon factor");
@@ -1958,12 +2021,32 @@ Pointer runMember(Pointer ptr, Word word) {
 	Instance inst = toInstance(ptr);
 	const char *member = word.word;
 
-	for(int i = 0;i < inst.df->field.size();i++) {
-		if(strcmp(inst.df->field[i].name, member) == 0) {
+	for(int i = 0;i < inst.df.field.size();i++) {
+		if(strcmp(inst.df.field[i].name, member) == 0) {
 			Pointer ret;
+			ret.type = inst.df.field[i].type;
 			ret.ptr = sAlloc(1);
-			sAccess(ret.ptr) = inst.fields[i].second;
+			access(ret.ptr) = inst.fields[i].second;
 
+			return ret;
+		}
+	}
+
+	for (int i = 0; i < inst.df.method.size(); i++) {
+		if (strcmp(inst.df.method[i].name, member) == 0) {
+			DefFunc df;
+			df.body = inst.df.method[i].body;
+			df.frame = inst.df.method[i].frame;
+			df.name = inst.df.method[i].name;
+			df.ret = inst.df.method[i].ret;
+
+			Closure* c = new Closure();
+			*c = makeClosure(df, ptr);
+
+			Pointer ret;
+			ret.type = fnToType(df);
+			ret.lv = false;
+			ret.ptr = hAlloc(Object{ 1, FUNC, (void*)c });
 			return ret;
 		}
 	}
@@ -1983,7 +2066,7 @@ Pointer runIdx(Pointer ptr, Idx idx) {
 
 	id = converse(id, tNum);
 
-	int i = sAccess(id.ptr);
+	int i = access(id.ptr);
 	return Pointer{type,true,arr.array[i]};
 }
 void clearFrame() {
@@ -1994,12 +2077,11 @@ void clearFrame() {
 		for (int j = list.size() - 1; j >= 0; j--) {
 			auto& var = list[j];
 		
-			destroy(Pointer{var.type, false, sAccess(var.ptr)});
+			destroy(Pointer{var.type, false, var.ptr});
 		}
 	}
 }
 void enterScope() {
-	proc.STACK.push(Frame());
 	proc.STACK.top().vars.emplace_back();
 }
 void exitScope() {
@@ -2068,27 +2150,46 @@ const char* strAdd(const char* a, double b) {
 }
 void sStoreReal(ll ptr, double val) {
 	ll v = *(ll*)((void*)&val);
-	sAccess(ptr) = v;
+	access(ptr) = v;
+}
+Instance makeInstance(LiteralObject obj) {
+	Instance ret;
+	int cid = getClass(obj.type.name);
+	if (cid == -1) panicf("makeInstance: cannot find class: %s", obj.type.name);
+
+	ret.df = proc.CLASS[cid];
+	ret.type = Type{ WORD, obj.type.name, {} };
+	
+	for (int i = 0; i < obj.init.list.size(); i++) {
+		auto fname = obj.init.list[i].first;
+		auto expr = obj.init.list[i].second;
+		auto fval = runExpr(expr);
+
+		ret.fields.emplace_back(fname, pAccess(fval).ptr);
+	}
+
+	return ret;
 }
 Array makeArray(LiteralArray arr) {
 	Array ret;
 	ret.etype = arr.type;
 	for (int i = 0; i < arr.elem.size(); i++) {
-		if(isPriType(arr.type))
-			ret.array.push_back(sAccess(runExpr(arr.elem[i]).ptr));
-		else {
+		if (isPriType(arr.type)) {
 			Data *neo = new Data();
-			neo->value = sAccess(runExpr(arr.elem[i]).ptr);
-			ret.array.push_back(sAccess(hAlloc(Object{1, NUM, (void*)neo})));
+			neo->value = access(runExpr(arr.elem[i]).ptr);
+			ret.array.push_back(access(hAlloc(Object{ 1, NUM, (void*)neo })));
+		}
+		else {
+			ret.array.push_back(access(runExpr(arr.elem[i]).ptr));
 		}
 	}
 	return ret;
 }
 void destroy(Pointer ptr) {
 	if (isPriType(ptr.type)) return;
-	if (sAccess(ptr.ptr) == 0) return;
+	if (access(ptr.ptr) == 0) return;
 
-	Object& obj = hAccess(sAccess(sAccess(ptr.ptr)));
+	Object& obj = hAccess(access(ptr.ptr));
 	obj.cnt--;
 
 	switch (ptr.type.kind) {
@@ -2116,7 +2217,7 @@ void destroyClosure(Closure cl) {
 }
 void destroyInstance(Instance in) {
 	for (int i = 0; i < in.fields.size(); i++) {
-		auto type = in.df->field[i].type;
+		auto type = in.df.field[i].type;
 		auto ptr = in.fields[i].second;
 
 		destroy(Pointer{ type, false, ptr });
