@@ -44,6 +44,9 @@ struct Instance {
 	DefClass *df;
 	std::vector<std::pair<const char *, ll>> fields;
 };
+struct Data {
+	int value;
+};
 struct NFunc {
 	const char* name;
 	Type rtype;
@@ -2071,7 +2074,13 @@ Array makeArray(LiteralArray arr) {
 	Array ret;
 	ret.etype = arr.type;
 	for (int i = 0; i < arr.elem.size(); i++) {
-		ret.array.push_back(sAccess(runExpr(arr.elem[i]).ptr));
+		if(isPriType(arr.type))
+			ret.array.push_back(sAccess(runExpr(arr.elem[i]).ptr));
+		else {
+			Data *neo = new Data();
+			neo->value = sAccess(runExpr(arr.elem[i]).ptr);
+			ret.array.push_back(sAccess(hAlloc(Object{1, NUM, (void*)neo})));
+		}
 	}
 	return ret;
 }

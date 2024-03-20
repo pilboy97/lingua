@@ -1,43 +1,5 @@
-class Node {
-    value num
-    next Node
-}
-
-class LinkedList {
-    begin Node
-    ---
-    print() {
-        var it = self.begin
-        for it is not null {
-            printf("%d\n", it.value)
-            it = it.next
-        }
-    }
-    append(value num) {
-        if self.begin is null {
-            self.begin = Node {
-                value: value,
-            }
-            return
-        }
-
-        var it = self.begin
-        for it.next is not null {
-            it = it.next
-        }
-
-        it.next = Node {
-            value: value,
-        }
-    }
-}
-
 func main() {
-    var list = LinkedList{}
-
-    list.append(1)
-    list.append(2)
-    list.append(3)
-
-    list.print()
+    var arr = []num{1,2,3}
+    arr[2] = 4
+    println(""+arr[2])
 }
