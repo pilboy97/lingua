@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <math.h>
 
+#include "string.hpp"
 #include "addScolon.hpp"
 #include "panic.hpp"
 #include "keywordDict.hpp"
@@ -17,17 +18,6 @@ extern KeywordDict kDict;
 
 void parsePanic(int line, int character, const char *msg) {
     panicf("at line %d, %d: %s", line, character, msg);
-}
-char *substr(const char *str, int begin, int end) {
-    char *ret = (char *) malloc(sizeof(char) * (end - begin + 1));
-    for(int i = begin; i < end; i++) {
-        ret[i - begin] = str[i];
-    }
-    ret[end - begin] = '\0';
-    return ret;
-}
-bool hasPrefix(const char *pre, const char *str){
-    return strncmp(pre, str, strlen(pre)) == 0;
 }
 double makeReal(unsigned long long x, unsigned long long y) {
     double a,b;
@@ -136,14 +126,6 @@ std::vector<Token> parse(const char* str) {
             i++;
             if(i >= len) {
                 parsePanic(line, i - sp, "unexpected \\");
-            }
-            if(str[i] == 'u' || str[i] == 'U') {
-                // literal unsigned number
-                
-                i++;
-                Token t = {LUNUM, NULL, 0, parseNumber(str, i, 32), line, i-sp-1};
-
-                ret.push_back(t);
             }
             else if(str[i] == 'b' || str[i] == 'B') {
                 //literal byte number

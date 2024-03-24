@@ -66,7 +66,6 @@ void initDict() {
     kDict.push("true", LTRUE);
     kDict.push("false", LFALSE);
     kDict.push("num", NUM);
-    kDict.push("unum", UNUM);
     kDict.push("real", REAL);
     kDict.push("byte", BYTE);
     kDict.push("bool", BOOL);

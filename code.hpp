@@ -3,7 +3,7 @@
 
 enum TokenCode {
     VOID, LNUM, LSTR, LUNUM, LREAL, LBYTE, LTRUE, LFALSE, WORD,
-    NUM, UNUM, REAL, BYTE, BOOL,
+    NUM, REAL, BYTE, BOOL,
     ADD, SUB, MUL, DIV, MOD, ASS,
     GR, LE, GEQ, LEQ, EQ, NEQ,
     NOT, AND, OR, XOR, RSH, LSH,

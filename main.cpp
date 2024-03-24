@@ -31,14 +31,16 @@ void printTokens(std::vector<Token> tokens) {
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
     init();
 
-    char *res = readWholeFile("input.lf");
-    std::vector<Token> tokens = parse(res);
-    Program prog = execRDP(tokens);
+    if (argc == 2) {
+        char* res = readWholeFile(argv[1]);
+        std::vector<Token> tokens = parse(res);
+        Program prog = execRDP(tokens);
 
-    run(prog);
+        run(prog);
+    }
 
     return 0;
 }

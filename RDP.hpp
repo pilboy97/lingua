@@ -3,12 +3,17 @@
 
 #include <vector>
 #include <algorithm>
+
+#include "procStruct.hpp"
+#include "code.hpp"
 #include "token.hpp"
 #include "keywordDict.hpp"
 #include "panic.hpp"
 
 static int header;
 static std::vector<Token> code;
+
+static std::vector<DefFunc> fn;
 
 void panicUnexpectedToken() {
     panicf("at line %d, %d:unexpected %s", code[header].line, code[header].col, kDict.sprint(code[header].kind));
@@ -37,161 +42,6 @@ Token must(int kind) {
     return code[header++];
 }
 
-struct Type {
-    int kind;
-    const char *name;
-    std::vector<Type> add;
-};
-
-struct Factor {
-    int kind;
-    void *ptr;
-};
-struct Expr12 {
-    Factor f;
-    std::vector<std::pair<TokenCode, void*> > childs;
-};
-struct Expr11 {
-    Expr12 child;
-    std::vector<TokenCode> oper;
-};
-struct Expr10 {
-    Expr11 child;
-    std::vector<std::pair<TokenCode, Type> > oper;
-};
-struct Expr9 {
-    std::vector<std::pair<TokenCode, Expr10> > childs;
-};
-struct Expr8 {
-    std::vector<std::pair<TokenCode, Expr9> > childs;
-};
-struct Expr7 {
-    std::vector<std::pair<TokenCode, Expr8> > childs;
-};
-struct Expr6 {
-    std::vector<std::pair<TokenCode, Expr7> > childs;
-};
-struct Expr5 {
-    std::vector<std::pair<TokenCode, Expr6> > childs;
-};
-struct Expr4 {
-    std::vector<Expr5> childs;
-};
-struct Expr3 {
-    std::vector<Expr4> childs;
-};
-struct Expr2 {
-    std::vector<Expr3> childs;
-};
-struct Expr1 {
-    std::vector<Expr2> childs;
-};
-struct Expr {
-    std::vector<Expr1> childs;
-};
-struct Expr_1 { // src = dst
-    Expr *src;
-    Expr dst;
-};
-struct FCall {
-    std::vector<Expr> list;
-};
-struct Idx {
-    Expr id;
-};
-struct InitList {
-    const char *tname;
-    std::vector<std::pair<const char*, Expr> > list;
-};
-struct Number {
-    long long value;
-};
-struct Real {
-    double value;
-};
-struct UNumber { 
-    unsigned long long value;
-};
-struct ByteNumber {
-    unsigned char value;
-};
-struct Word {
-    const char *word;
-};
-struct LiteralString {
-    const char *str;
-};
-struct LiteralArray {
-    Type type;
-    std::vector<Expr> elem;
-};
-struct LiteralObject {
-    Type type;
-    InitList init;
-};
-struct Stmt {
-    int kind;
-    void *stmt;
-};
-struct BlockStmt {
-    std::vector<Stmt> childs;
-};
-struct IfStmt {
-    std::vector<std::pair<Expr, BlockStmt> > _if;
-    BlockStmt *_else;
-};
-struct ForStmt {
-    Expr_1 *init;
-    Expr_1 *cond;
-    Expr_1 *act;
-
-    BlockStmt body;
-};
-struct RetStmt {
-    Expr *expr;
-};
-struct DefVar {
-    const char *name;
-    Type *type;
-    Expr *init;
-};
-struct Method {
-    bool isPrivate;
-    const char *name;
-    std::vector<std::pair<const char *, Type> > frame;
-    BlockStmt body;
-    Type ret;
-};
-struct Field {
-    bool isPrivate;
-    const char *name;
-    Type type;
-};
-struct IMember {
-    bool isPrivate;
-    const char *name;
-    std::vector<Type> frame;
-    Type ret;
-};
-struct DefInterface {
-    const char *name;
-    std::vector<IMember> method;
-};
-struct DefClass {
-    const char *name;
-    std::vector<Field> field;
-    std::vector<Method> method;
-};
-struct DefFunc {
-    const char *name;
-    std::vector<std::pair<const char *, Type> > frame;
-    std::vector<const char * > captured;
-    Type ret;
-    BlockStmt body;
-};
-struct Program {
-    std::vector<std::pair<int, void*> > childs;
-};
 
 FCall parseFCall();
 Idx parseIdx();
@@ -204,9 +54,6 @@ Type parseType() {
 
     if(chk(NUM)) {
         ret.kind = NUM;
-    }
-    else if(chk(UNUM)) {
-        ret.kind = UNUM;
     }
     else if(chk(BYTE)) {
         ret.kind = BYTE;
@@ -290,12 +137,6 @@ Factor parseFactor() {
 
         return Factor {LNUM, neo};
     }
-    else if(code[header].kind == LUNUM) {
-        UNumber *neo = new UNumber();
-        neo->value = code[header++].value;
-
-        return Factor {LUNUM, neo};
-    }
     else if(code[header].kind == LBYTE) {
         ByteNumber *neo = new ByteNumber();
         neo->value = code[header++].value;
@@ -338,7 +179,7 @@ Factor parseFactor() {
         must(CSB);
 
         LiteralArray *neo = new LiteralArray();
-        neo->type = parseType();
+        neo->etype = parseType();
 
         must(OBL);
         while(header < code.size() && code[header].kind != CBL) {
@@ -361,10 +202,13 @@ Factor parseFactor() {
     else if(chk(FUNC)) {
         header--;
 
-        DefFunc *neo = new DefFunc();
-        *neo =  parseLambda();
+        DefFunc neo = parseLambda();
+        fn.push_back(neo);
 
-        return Factor {FUNC, neo};
+        int* ptr = new int;
+        *ptr = fn.size() - 1;
+
+        return Factor {FUNC, ptr};
     }
     else if(chk(NIL)) {
         return Factor{NIL, NULL};
@@ -686,6 +530,7 @@ ForStmt parseForStmt() {
 
     must(FOR);
     if (header < code.size() && code[header].kind != OBL) {
+        must(OBR);
         Expr_1 *e = new Expr_1();
         *e = parseExpr_1();
 
@@ -704,6 +549,7 @@ ForStmt parseForStmt() {
             ret.cond = e;
             ret.act = NULL;
         }
+        must(CBR);
     }
 
     ret.body = parseBlockStmt();
@@ -715,7 +561,11 @@ IfStmt parseIfStmt() {
     ret._else = NULL;
 
     must(IF);
+
+    must(OBR);
     Expr cond = parseExpr();
+    must(CBR);
+
     BlockStmt block = parseBlockStmt();
 
     ret._if.push_back(std::make_pair(cond, block));
@@ -844,6 +694,10 @@ DefClass parseDefClass() {
     if(chk(SEP)) {
         while(header < code.size() && code[header].kind != CBL) {
             Method method;
+            std::vector<std::pair<const char*, Type>> frame;
+            Type rtype;
+            BlockStmt body;
+            DefFunc func;
 
             method.isPrivate = false;
             if(chk(ADD))
@@ -857,13 +711,25 @@ DefClass parseDefClass() {
             while(header < code.size() && code[header].kind != CBR) {
                 const char* name = must(WORD).str;
                 Type type = parseType();
-                method.frame.push_back(std::make_pair(name, type));
+                frame.push_back(std::make_pair(name, type));
                 chk(COMMA);
             }
             must(CBR);
+
+            rtype = Type{ 0 };
+            if (chk(ARROW)) {
+                rtype = parseType();
+            }
             
-            method.body = parseBlockStmt();
+            body = parseBlockStmt();
             must(SCOLON);
+
+            func.ret = rtype;
+            func.frame = frame;
+            func.body = body;
+
+            fn.push_back(func);
+            method.idx = fn.size()-1;
 
             ret.method.push_back(method);
         }
@@ -899,7 +765,15 @@ DefInterface parseDefInterface() {
             chk(COMMA);
         }
         must(CBR);
+        
+        member.ret = Type{ 0 };
+        if (chk(ARROW)) {
+            member.ret = parseType();
+        }
+        
         must(SCOLON);
+
+        ret.method.push_back(member);
     }
 
     must(CBL);
@@ -933,14 +807,18 @@ DefFunc parseDefFunc() {
 Program parseProgram() {
     Program ret;
 
-    while(header < code.size() && header < ::code.size()) {
+    while(header < code.size()) {
         if(code[header].kind == SCOLON) {
             header++;
         }
         else if(code[header].kind == FUNC) {
-            DefFunc *neo = new DefFunc();
-            *neo = parseDefFunc();
-            ret.childs.push_back(std::make_pair(FUNC, neo));
+            DefFunc neo = parseDefFunc();
+            int* ptr = new int;
+            
+            fn.push_back(neo);
+            *ptr = fn.size() - 1;
+
+            ret.childs.push_back(std::make_pair(FUNC, ptr));
             must(SCOLON);
         }
         else if(code[header].kind == CLASS) {
@@ -960,6 +838,7 @@ Program parseProgram() {
         }
     }
     
+    ret.fn = fn;
     return ret;
 }
 
