@@ -436,7 +436,7 @@ Pointer nfappend(FCall args) {
     if (!isArray(ptr.type)) panic("append: argument mismatch: not Array");
     if (!isAssAble(ptr.type.add[0], elem.type)) panic("append: argument mismatch: type mismatch");
 
-    if(ptr.type.kind == WORD && findInterface(ptr.type.name) != -1 && findClass(elem.type.name) != -1) {
+    if(ptr.type.kind == WORD && findInterface(ptr.type.add[0].name) != -1 && findClass(elem.type.name) != -1) {
         Pointer nelem = Pointer{ptr.type.add[0], true, sAlloc(0)};
         assign(nelem, elem);
         
