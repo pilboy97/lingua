@@ -18,11 +18,8 @@ bool isArray(Type x) {
 bool isFunc(Type x) {
     return x.kind == FUNC;
 }
-bool isInstance(Type x) {
+bool isObject(Type x) {
     return x.kind == WORD;
-}
-bool isIInstance(Type x) {
-    return x.kind == INTERFACE;
 }
 bool isSameType(Type x, Type y) {
     if (x.kind != y.kind) return false;

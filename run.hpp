@@ -14,6 +14,7 @@
 #define INIT_MEM_SIZE 1024
 
 bool DEBUG = false;
+bool NOCLR = false;
 
 struct Array {
     Type eType;
@@ -52,7 +53,7 @@ struct Frame {
     std::vector<std::vector<std::pair<const char*, Pointer>>> vars;
 };
 
-typedef Pointer(*func)(FCall args);
+typedef Pointer(*func)(std::vector<Pointer> args);
 typedef void(*act)(Pointer ptr);
 
 struct NFunc {
@@ -115,6 +116,7 @@ const char* toStr(Pointer ptr);
 bool isStr(Type type);
 
 std::vector<int> getSupers(int cid);
+bool isSuper(int cid, int scid);
 
 Pointer makeClosure(int fid, Pointer _this);
 Pointer makeArray(LiteralArray arr);
@@ -192,6 +194,7 @@ void exitScope();
 
 
 void ref(Pointer ptr) {
+    if (NOCLR) return;
     if (ptr.ptr == 0) return;
     if (isPriType(ptr.type)) return;
 
@@ -218,32 +221,35 @@ void ref(Pointer ptr) {
             ref(Pointer{ fn.cType[i], false, hAccess(pAdd(p, i)) });
         }
     }
-    else if (isInstance(ptr.type)) {
-        auto in = toInstance(pAlloc(ptr));
-        auto cl = in.cl;
+    else if (isObject(ptr.type)) {
+        if (findClass(ptr.type.name) != -1) {
+            auto in = toInstance(pAlloc(ptr));
+            auto cl = in.cl;
 
-        ll p = hAccess(ptr.ptr);
-        if (p == 0) return;
-        for (int i = 0; i < cl.field.size(); i++) {
-            ref(Pointer{ cl.field[i].type, false, hAccess(pAdd(p, i)) });
+            ll p = hAccess(ptr.ptr);
+            if (p == 0) return;
+            for (int i = 0; i < cl.field.size(); i++) {
+                ref(Pointer{ cl.field[i].type, false, hAccess(pAdd(p, i)) });
+            }
         }
-    }
-    else if (isIInstance(ptr.type)) {
-        auto iin = toIInstance(pAlloc(ptr));
-        auto in = iin.in;
-        auto cl = iin.cl;
+        else if (findInterface(ptr.type.name) != -1) {
+            auto iin = toIInstance(pAlloc(ptr));
+            auto in = iin.in;
+            auto cl = iin.cl;
 
-        ll p = hAccess(ptr.ptr);
-        if (p == 0) return;
-        for (int i = 0; i < in.method.size(); i++) {
-            ref(Pointer{ Type{FUNC}, false, hAccess(pAdd(p, i + 2)) });
+            ll p = hAccess(ptr.ptr);
+            if (p == 0) return;
+
+            ref(Pointer{ Type{WORD, cl.name, {}}, false, hAccess(pAdd(p, 1)) });
+            for (int i = 0; i < in.method.size(); i++) {
+                ref(Pointer{ Type{FUNC}, false, hAccess(pAdd(p, i + 2)) });
+            }
         }
-
-        hAccess(pAdd(p, -2)) = 0;
     }
     else panic("ref: wrong type");
 }
 void dref(Pointer ptr) {
+    if (NOCLR) return;
     if (ptr.ptr == 0) return;
     if (isPriType(ptr.type)) return;
 
@@ -284,36 +290,39 @@ void dref(Pointer ptr) {
 
         hAccess(pAdd(p, -2)) = 0;
     }
-    else if (isInstance(ptr.type)) {
-        auto in = toInstance(pAlloc(ptr));
-        auto cl = in.cl;
+    else if (isObject(ptr.type)) {
+        if (findClass(ptr.type.name) != -1) {
+            auto in = toInstance(pAlloc(ptr));
+            auto cl = in.cl;
 
-        ll p = hAccess(ptr.ptr);
-        if (p == 0) return;
-        for (int i = 0; i < cl.field.size(); i++) {
-            dref(Pointer{ cl.field[i].type, false, hAccess(pAdd(p, i)) });
-        }
-        for (int i = 0; i < cl.field.size(); i++) {
-            hAccess(pAdd(p, i)) = 0;
-        }
+            ll p = hAccess(ptr.ptr);
+            if (p == 0) return;
+            for (int i = 0; i < cl.field.size(); i++) {
+                dref(Pointer{ cl.field[i].type, false, hAccess(pAdd(p, i)) });
+            }
+            for (int i = 0; i < cl.field.size(); i++) {
+                hAccess(pAdd(p, i)) = 0;
+            }
 
-        hAccess(pAdd(p, -2)) = 0;
-    }
-    else if (isIInstance(ptr.type)) {
-        auto iin = toIInstance(pAlloc(ptr));
-        auto in = iin.in;
-        auto cl = iin.cl;
-
-        ll p = hAccess(ptr.ptr);
-        if (p == 0) return;
-        for (int i = 0; i < in.method.size(); i++) {
-            dref(Pointer{ Type{FUNC}, false, hAccess(pAdd(p, i + 2)) });
+            hAccess(pAdd(p, -2)) = 0;
         }
-        for (int i = 0; i < in.method.size(); i++) {
-            hAccess(pAdd(p, i)) = 0;
-        }
+        else if (findInterface(ptr.type.name) != -1) {
+            auto iin = toIInstance(pAlloc(ptr));
+            auto in = iin.in;
+            auto cl = iin.cl;
 
-        hAccess(pAdd(p, -2)) = 0;
+            ll p = hAccess(ptr.ptr);
+            if (p == 0) return;
+            dref(Pointer{ Type{WORD, cl.name, {}}, false, hAccess(pAdd(p, 1)) });
+            for (int i = 0; i < in.method.size(); i++) {
+                dref(Pointer{ Type{FUNC}, false, hAccess(pAdd(p, i + 2)) });
+            }
+            for (int i = 0; i < in.method.size(); i++) {
+                hAccess(pAdd(p, i)) = 0;
+            }
+
+            hAccess(pAdd(p, -2)) = 0;
+        }
     }
     else panic("dref: wrong type");
 }
@@ -372,10 +381,8 @@ bool isStr(Type type) {
     return isArray(type) && isByte(type.add[0]);
 }
 
-Pointer nfPrint(FCall args) {
-    if (args.list.size() != 1) panic("nfPrint: argument mismatch");
-
-    Pointer ptr = runExpr(args.list[0]);
+Pointer nfPrint(std::vector<Pointer> args) {
+    Pointer ptr = args[0];
  
     if (!isStr(ptr.type)) panic("nfPrint: argument mismatch");
 
@@ -401,10 +408,10 @@ Pointer nfPrint(FCall args) {
 
     return nil;
 }
-Pointer nflen(FCall args) {
-    if (args.list.size() != 1) panic("len: argument mismatch");
+Pointer nflen(std::vector<Pointer> args) {
+    if (args.size() != 1) panic("len: argument mismatch");
 
-    Pointer ptr = runExpr(args.list[0]);
+    Pointer ptr = args[0];
 
     if (!isArray(ptr.type)) panic("len: argument mismatch: not Array");
 
@@ -413,10 +420,10 @@ Pointer nflen(FCall args) {
 
     return Pointer{tNum, false, sAlloc(len)};
 }
-Pointer nfcap(FCall args) {
-    if (args.list.size() != 1) panic("cap: argument mismatch");
+Pointer nfcap(std::vector<Pointer> args) {
+    if (args.size() != 1) panic("cap: argument mismatch");
 
-    Pointer ptr = runExpr(args.list[0]);
+    Pointer ptr = args[0];
 
     if (!isArray(ptr.type)) panic("cap: argument mismatch: not Array");
 
@@ -425,23 +432,17 @@ Pointer nfcap(FCall args) {
 
     return Pointer{tNum, false, sAlloc(cap)};
 }
-Pointer nfappend(FCall args) {
-    if (args.list.size() != 2) panic("append: argument mismatch");
+Pointer nfappend(std::vector<Pointer> args) {
+    if (args.size() != 2) panic("append: argument mismatch");
 
-    Pointer ptr = runExpr(args.list[0]);
-    Pointer elem = runExpr(args.list[1]);
+    Pointer ptr = args[0];
+    Pointer elem = args[1];
 
+    elem = converse(elem, ptr.type.add[0]);
     ref(pAccess(elem));
 
     if (!isArray(ptr.type)) panic("append: argument mismatch: not Array");
     if (!isAssAble(ptr.type.add[0], elem.type)) panic("append: argument mismatch: type mismatch");
-
-    if(ptr.type.kind == WORD && findInterface(ptr.type.add[0].name) != -1 && findClass(elem.type.name) != -1) {
-        Pointer nelem = Pointer{ptr.type.add[0], true, sAlloc(0)};
-        assign(nelem, elem);
-        
-        elem = nelem;
-    }
 
     Array arr = toArray(ptr);
     int len = arr.len;
@@ -474,10 +475,10 @@ Pointer nfappend(FCall args) {
 
     return nil;
 }
-Pointer nfshrink(FCall args) {
-    if (args.list.size() != 1) panic("shrink: argument mismatch");
+Pointer nfshrink(std::vector<Pointer> args) {
+    if (args.size() != 1) panic("shrink: argument mismatch");
 
-    Pointer ptr = runExpr(args.list[0]);
+    Pointer ptr = args[0];
     Array arr = toArray(ptr);
 
     ptr = pAccess(ptr);
@@ -646,10 +647,10 @@ void run(Program prog) {
     _fn = prog.fn;
     _nf.push_back(NFunc{});
     _nf.push_back(NFunc{Type{FUNC, "", {tVoid,tStr}}, "print", nfPrint, pPrint});
-    _nf.push_back(NFunc{ Type{FUNC, "", {tNum, Type{OSB, "", {tAny}}}}, "len", nflen, pLen });
-    _nf.push_back(NFunc{ Type{FUNC, "", {tNum, Type{OSB, "", {tAny}}}}, "cap", nfcap, pCap });
-    _nf.push_back(NFunc{ Type{FUNC, "", {tVoid, Type{OSB, "", {tAny}}}}, "append", nfappend, pAppend });
-    _nf.push_back(NFunc{Type{FUNC, "", {tVoid, Type{OSB, "", {tAny}}}}, "shrink", nfshrink, pShrink});
+    _nf.push_back(NFunc{ Type{FUNC, "", {tNum, tAny}}, "len", nflen, pLen });
+    _nf.push_back(NFunc{ Type{FUNC, "", {tNum, tAny}}, "cap", nfcap, pCap });
+    _nf.push_back(NFunc{ Type{FUNC, "", {tVoid, tAny, tAny}}, "append", nfappend, pAppend });
+    _nf.push_back(NFunc{ Type{FUNC, "", {tVoid, tAny}} , "shrink", nfshrink, pShrink});
 
     for (int i = 0; i < prog.childs.size(); i++) {
         auto duo = prog.childs[i];
@@ -714,7 +715,7 @@ void defVar(DefVar var) {
 
     if (var.type == NULL) {
         Pointer ptr = runExpr(*var.init);
-        Pointer ret = { ptr.type, ptr.lv, sAlloc(1) };
+        Pointer ret = { ptr.type, ptr.lv, sAlloc(0) };
         assign(ret, ptr);
         newLVar(name, ret);
         return;
@@ -765,45 +766,11 @@ void assign(Pointer dst, Pointer src) {
         access(dst) = access(src);
     }
     else {
-        ll iid = findInterface(dst.type.name);
-        ll cid = findClass(src.type.name);
-        ll cid2 = findClass(dst.type.name);
+        Pointer neo = converse(src, dst.type);
+        
+        if (access(neo) == 0) panic("assign: cannot converse dst type");
 
-        if(cid != -1 && cid2 != -1) {
-            access(dst) = access(src);
-        }
-        else {
-            DefInterface in = _interface[iid];
-            DefClass cl = _class[cid];
-
-            std::vector<ll> data;
-
-            data.push_back(findClass(src.type.name));
-            data.push_back(access(src));
-
-            for (int i = 0; i < in.method.size(); i++) {
-                auto m = in.method[i];
-                for (int j = 0; j < cl.method.size(); j++) {
-                    auto m2 = cl.method[j];
-
-                    if (strcmp(m.name, m2.name) == 0) {
-                        data.push_back(access(makeClosure(m2.idx, src)));
-                    }
-                }
-            }
-
-            ll ptr = hAlloc(2);
-            ll ptr2 = hAlloc(data.size());
-
-            hAccess(ptr) = ptr2;
-            hAccess(pAdd(ptr, 1)) = iid;
-
-            for (int i = 0; i < data.size(); i++) {
-                hAccess(pAdd(ptr2, i)) = data[i];
-            }
-
-            access(dst) = ptr;
-        }
+        access(dst) = access(neo);
     }
 }
 Pointer findLVar(const char* name) {
@@ -1037,14 +1004,26 @@ Pointer runFCall(Pointer ptr, FCall args) {
     auto fn = toClosure(ptr);
     ptr = pAccess(ptr);
 
+    std::vector<Pointer> arglist;
+
+    for (int i = 0; i < args.list.size(); i++) {
+        arglist.push_back(runExpr(args.list[i]));
+    }
+
     if (fn.fid >= 0) {
         auto def = _fn[fn.fid];
 
         std::vector<ll> alist;
         std::vector<ll> clist;
 
+        if (def.frame.size() != args.list.size()) panic("runFCall: arguments mismatch");
+
         for (int i = 0; i < args.list.size(); i++) {
-            alist.push_back(access(runExpr(args.list[i])));
+            ll ptr = access(converse(arglist[i], def.frame[i].second));
+            if (!isPriType(def.frame[i].second) && ptr == 0)
+                panic("runFCall: arguments mismatch");
+
+            alist.push_back(ptr);
         }
 
         proc.STACK.push_back(Frame());
@@ -1117,7 +1096,13 @@ Pointer runFCall(Pointer ptr, FCall args) {
     }
     else {
         NFunc nf = _nf[-fn.fid];
-        return (*nf.fn)(args);
+        if (nf.type.add.size() - 1 != arglist.size()) {
+            panic("runFCall: argument mismatch");
+        }
+        for (int i = 1; i < nf.type.add.size(); i++) {
+            arglist[i - 1] = converse(arglist[i - 1], nf.type.add[i]);
+        }
+        return (*nf.fn)(arglist);
     }
 }
 void runRetStmt(RetStmt stmt, jmp_buf jmp) {
@@ -1224,7 +1209,9 @@ Closure toClosure(Pointer ptr) {
     ret.fid = fid;
 
     if (fid >= 0) {
-        if (!(0 <= fid && fid < _fn.size())) panic("toClosure: wrong fid");
+        if (!(0 <= fid && fid < _fn.size()))
+            panic("toClosure: wrong fid");
+
         ptr = pAccess(ptr);
         for (int i = 0; i < _fn[fid].cType.size(); i++) {
             ret.cap.push_back(hAccess(pAdd(ptr.ptr, i)));
@@ -1253,7 +1240,9 @@ IInstance toIInstance(Pointer ptr) {
 
     ptr = pAccess(ptr);
     int iid = hAccess(pAdd(ptr.ptr, 1));
-    if (!(0 <= iid && iid < _interface.size())) panic("toClosure: wrong fid");
+    if (!(0 <= iid && iid < _interface.size())) 
+        panic("toIInstance: wrong iid");
+
     ret.in = _interface[iid];
 
     int p = hAccess(ptr.ptr);
@@ -2016,9 +2005,75 @@ Pointer runFactor(Factor f) {
     return ret;
 }
 Pointer converse(Pointer x, Type type) {
+    if (type.kind == -1)
+        return Pointer{ x.type, false, x.ptr };
     if (isSameType(x.type, type)) {
-        return Pointer{ x.type, false, sAlloc(sAccess(x.ptr)) };
+        return Pointer{ x.type, false, x.ptr };
     }
+    else if (isPriType(x.type) && isPriType(type)) {
+        ll ret;
+        if (x.type.kind == REAL) {
+            double value = restore(access(x));
+
+            ret = (ll)value;
+        }
+        else if (type.kind == REAL) {
+            double value = access(x);
+
+            ret = realBits(value);
+        }
+        else {
+            ret = access(x);
+        }
+
+        return Pointer{ type, false, sAlloc(ret) };
+    }
+    else if (x.type.kind == WORD && type.kind == WORD) {
+        int iid = findInterface(type.name);
+        int cid = findClass(x.type.name);
+        int cid2 = findClass(type.name);
+
+        if (cid != -1 && iid != -1) {
+            DefInterface in = _interface[iid];
+            DefClass cl = _class[cid];
+
+            std::vector<ll> data;
+
+            data.push_back(findClass(x.type.name));
+            data.push_back(access(x));
+
+            for (int i = 0; i < in.method.size(); i++) {
+                auto m = in.method[i];
+                for (int j = 0; j < cl.method.size(); j++) {
+                    auto m2 = cl.method[j];
+
+                    if (strcmp(m.name, m2.name) == 0) {
+                        data.push_back(access(makeClosure(m2.idx, x)));
+                    }
+                }
+            }
+
+            ll ptr = hAlloc(2);
+            ll ptr2 = hAlloc(data.size());
+
+            hAccess(ptr) = ptr2;
+            hAccess(pAdd(ptr, 1)) = iid;
+
+            for (int i = 0; i < data.size(); i++) {
+                hAccess(pAdd(ptr2, i)) = data[i];
+            }
+
+            Pointer ret = { type, false, sAlloc(ptr) };
+            proc.STACK.back().tmp.push_back(ret);
+            return ret;
+        }
+        else if (cid != -1 && cid2 != -1) {
+            if (isSuper(cid, cid2)) {
+                return Pointer{ type, false, x.ptr };
+            }
+        }
+    }
+    return nil;
 }
 Pointer runMember(Pointer ptr, Word member) {
     int iid, cid;
@@ -2273,5 +2328,13 @@ std::vector<int> getSupers(int cid) {
     std::reverse(ret.begin(), ret.end());
 
     return ret;
+}
+bool isSuper(int cid, int cid2) {
+    auto supers = getSupers(cid);
+    for (int i = 0; i < supers.size(); i++) {
+        if (supers[i] == cid2)
+            return true;
+    }
+    return false;
 }
 #endif
