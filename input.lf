@@ -1,9 +1,15 @@
-func f(x num, y num) -> num {
-    return x + y
-}
-
 func main() {
-    var x = 1
-    var y = 2
-    print("" + x + " + " + y + " = " + f(x, y) + "\n")
+    var divider = []num{}
+    var N = 12
+    var i num
+    for (i = 1;i <= N;i = i + 1) {
+        if(N % i == 0) {
+            append(divider, i)
+        }
+    }
+
+    for(i = 0;i < len(divider);i = i + 1) {
+        print("" + divider[i] + "\n")
+    }
+    print("" + len(divider) + " " + cap(divider) + "\n")
 }

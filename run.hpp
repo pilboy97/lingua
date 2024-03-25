@@ -409,6 +409,18 @@ Pointer nflen(FCall args) {
 
     return Pointer{tNum, false, sAlloc(len)};
 }
+Pointer nfcap(FCall args) {
+    if (args.list.size() != 1) panic("cap: argument mismatch");
+
+    Pointer ptr = runExpr(args.list[0]);
+
+    if (!isArray(ptr.type)) panic("cap: argument mismatch: not Array");
+
+    Array arr = toArray(ptr);
+    int cap = arr.cap;
+
+    return Pointer{tNum, false, sAlloc(cap)};
+}
 Pointer nfappend(FCall args) {
     if (args.list.size() != 2) panic("append: argument mismatch");
 
@@ -592,13 +604,15 @@ void run(Program prog) {
 
     ll pPrint = makeClosure(-1, nil).ptr;
     ll pLen = makeClosure(-2, nil).ptr;
-    ll pAppend = makeClosure(-3, nil).ptr;
+    ll pCap = makeClosure(-3, nil).ptr;
+    ll pAppend = makeClosure(-4, nil).ptr;
 
     _fn = prog.fn;
     _nf.push_back(NFunc{});
     _nf.push_back(NFunc{Type{FUNC, "", {tVoid,tStr}}, "print", nfPrint, pPrint});
-    _nf.push_back(NFunc{ Type{FUNC, "", {tVoid,tStr}}, "len", nflen, pLen });
-    _nf.push_back(NFunc{ Type{FUNC, "", {tVoid,tStr}}, "append", nfappend, pAppend });
+    _nf.push_back(NFunc{ Type{FUNC, "", {Type{OSB, "", {tAny}}, tNum}}, "len", nflen, pLen });
+    _nf.push_back(NFunc{ Type{FUNC, "", {Type{OSB, "", {tAny}}, tNum}}, "cap", nfcap, pCap });
+    _nf.push_back(NFunc{ Type{FUNC, "", {Type{OSB, "", {tAny}}, tAny}}, "append", nfappend, pAppend });
 
 
     for (int i = 0; i < prog.childs.size(); i++) {
@@ -657,19 +671,7 @@ void defVar(DefVar var) {
     }
 
     if (var.init == NULL) {
-        Pointer ptr;
-        if(var.type->kind != OSB)
-            ptr = { *var.type, true, sAlloc(0) };
-        else {
-            ll p = hAlloc(3);
-            ll data = hAlloc(1);
-
-            hAccess(p) = data;
-            hAccess(pAdd(p, 1)) = 0;
-            hAccess(pAdd(p, 2)) = 1;
-
-            ptr = { *var.type, true, sAlloc(p) };
-        }
+        Pointer ptr = { *var.type, true, sAlloc(0) };
         newLVar(name, ptr);
         return;
     }
@@ -1269,11 +1271,21 @@ Pointer makeArray(LiteralArray arr) {
     Pointer ret;
     
     ll ptr = hAlloc(3);
-    ll ptr2 = hAlloc(arr.elem.size());
+    ll ptr2;
+    int cap;
+
+    if(arr.elem.size() > 0) {
+        ptr2 = hAlloc(arr.elem.size());
+        cap = arr.elem.size();
+    }
+    else {
+        ptr2 = hAlloc(1);
+        cap = 1;
+    }
 
     hAccess(ptr) = ptr2;
     hAccess(pAdd(ptr, 1)) = arr.elem.size();
-    hAccess(pAdd(ptr, 2)) = arr.elem.size();
+    hAccess(pAdd(ptr, 2)) = cap;
 
     for (int i = 0; i < arr.elem.size(); i++) {
         hAccess(pAdd(ptr2, i)) = sAccess(runExpr(arr.elem[i]).ptr);
