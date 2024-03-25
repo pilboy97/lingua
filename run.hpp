@@ -11,6 +11,7 @@
 #include <stdlib.h>
 
 #define ll long long
+#define INIT_MEM_SIZE 1024
 
 bool DEBUG = false;
 
@@ -70,6 +71,7 @@ struct Proc {
 ll GP;
 std::vector<ll> mem;
 std::vector<ll> hmem;
+std::vector<std::pair<int, int>> blocks;
 
 std::vector<DefClass> _class;
 std::vector<DefInterface> _interface;
@@ -434,6 +436,13 @@ Pointer nfappend(FCall args) {
     if (!isArray(ptr.type)) panic("append: argument mismatch: not Array");
     if (!isAssAble(ptr.type.add[0], elem.type)) panic("append: argument mismatch: type mismatch");
 
+    if(ptr.type.kind == WORD && findInterface(ptr.type.name) != -1 && findClass(elem.type.name) != -1) {
+        Pointer nelem = Pointer{ptr.type.add[0], true, sAlloc(0)};
+        assign(nelem, elem);
+        
+        elem = nelem;
+    }
+
     Array arr = toArray(ptr);
     int len = arr.len;
     int cap = arr.cap;
@@ -618,8 +627,15 @@ void nullPointerException() {
 }
 
 void run(Program prog) {
-    initProc();
+    mem = std::vector<ll>(INIT_MEM_SIZE + 1);
+    hmem = std::vector<ll>(INIT_MEM_SIZE + 3);
 
+    hmem[1] = 0;
+    hmem[2] = INIT_MEM_SIZE + 2;
+
+    blocks.emplace_back(1, INIT_MEM_SIZE + 2);
+
+    initProc();
 
     ll pPrint = makeClosure(-1, nil).ptr;
     ll pLen = makeClosure(-2, nil).ptr;
@@ -1361,7 +1377,15 @@ Pointer makeInstance(LiteralObject obj) {
                 if (strcmp(f1.name, f2.first) == 0) {
                     found = true;
                     auto e = runExpr(f2.second);
-                    data.push_back(sAccess(e.ptr));
+                    if(f1.type.kind == WORD && e.type.kind == WORD && findInterface(f1.type.name) != -1 && findClass(e.type.name) != -1) {
+                        Pointer ne = Pointer{f1.type, false, sAlloc(0)};
+                        assign(ne, e);
+                        
+                        data.push_back(access(ne));
+                    }
+                    else {
+                        data.push_back(access(e));
+                    }
 
                     ref(pAccess(e));
 
