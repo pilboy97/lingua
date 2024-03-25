@@ -1,0 +1,12 @@
+func f() {
+    defer {
+        print("f ends 1\n")
+    }
+    defer {
+        print("f ends 2\n")
+    }
+    print("f begin\n")
+}
+func main() {
+    f()
+}

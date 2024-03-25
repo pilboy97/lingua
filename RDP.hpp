@@ -656,6 +656,13 @@ Stmt parseStmt() {
         ret.kind = RETURN;
         ret.stmt = neo;
     }
+    else if(chk(DEFER)) {
+        DeferStmt *neo = new DeferStmt();
+        neo->block = parseBlockStmt();
+
+        ret.kind = DEFER;
+        ret.stmt = neo;
+    }
     else {
         Expr_1 *neo = new Expr_1();
         *neo = parseExpr_1();

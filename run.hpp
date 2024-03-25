@@ -46,6 +46,7 @@ struct Frame {
     Type rType;
     Pointer _this;
 
+    std::vector<std::vector<DeferStmt>> defer;
     std::vector<Pointer> tmp;
     std::vector<std::vector<std::pair<const char*, Pointer>>> vars;
 };
@@ -127,6 +128,7 @@ void initProc();
 void run(Program prog);
 
 void runStmt(Stmt stmt, jmp_buf jmp);
+void runBlockEnd();
 void runBlockStmt(BlockStmt stmt, jmp_buf jmp);
 void runIfStmt(IfStmt stmt, jmp_buf jmp);
 void runForStmt(ForStmt stmt, jmp_buf jmp);
@@ -846,7 +848,7 @@ void runStmt(Stmt stmt, jmp_buf jmp) {
 
     if (DEBUG) {
         puts("");
-        puts("---   ---   ---");
+        puts("------------");
         printStmt(stmt);
     }
 
@@ -877,14 +879,38 @@ void runStmt(Stmt stmt, jmp_buf jmp) {
     case SCOLON:
         runExpr_1(*(Expr_1*)stmt.stmt);
         break;
+    case DEFER:
+        proc.STACK.back().defer.back().push_back(*(DeferStmt*)stmt.stmt);
+        break;
     }
     clear();
     proc.ESP = ESP;
     if (DEBUG) {
         debug();
         printf("END STATEMENT\n");
-        puts("---   ---   ---");
+        puts("------------");
         puts("");
+    }
+}
+void runBlockEnd() {
+    for(int i = proc.STACK.back().defer.back().size() - 1;i >= 0;i--) {
+        auto block = proc.STACK.back().defer.back()[i].block;
+
+        jmp_buf jp;
+        int jv;
+        
+        if((jv = setjmp(jp)) == 0) {
+            runBlockStmt(block, jp);
+        }
+        else if(jv == 1) {
+            panic("runBlockEnd: wrong return"); 
+        }
+        else if(jv == 2) {
+            panic("runBlockEnd: wrong break");
+        }
+        else if(jv == 3) {
+            panic("runBlockEnd: wrong continue");
+        }
     }
 }
 void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
@@ -892,8 +918,18 @@ void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
     for (int i = 0; i < stmt.childs.size(); i++) {
         auto s = stmt.childs[i];
         
-        runStmt(s, jmp);
+        jmp_buf jp;
+        int jv;
+
+        if((jv = setjmp(jp)) == 0)
+            runStmt(s, jp);
+        else {
+            runBlockEnd();
+            exitScope();
+            longjmp(jmp, jv);
+        }
     }
+    runBlockEnd();
     exitScope();
 }
 void runIfStmt(IfStmt stmt, jmp_buf jmp) {
@@ -956,7 +992,8 @@ Pointer runFCall(Pointer ptr, FCall args) {
         }
 
         proc.STACK.push_back(Frame());
-        proc.STACK.back().vars.push_back(std::vector<std::pair<const char*, Pointer>>());
+        proc.STACK.back().vars.emplace_back();
+        proc.STACK.back().defer.emplace_back();
 
         sAlloc(proc.SP);
         proc.SP = proc.ESP - 1;
@@ -2006,10 +2043,12 @@ void cleanFrame() {
 
 void enterScope() {
     proc.STACK.back().vars.emplace_back();
+    proc.STACK.back().defer.emplace_back();
 }
 void exitScope() {
     cleanScope();
     proc.STACK.back().vars.pop_back();
+    proc.STACK.back().defer.pop_back();
 }
 void memStat() {
     static int h = 0;

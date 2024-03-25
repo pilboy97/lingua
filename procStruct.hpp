@@ -113,6 +113,9 @@ struct ForStmt {
 
     BlockStmt body;
 };
+struct DeferStmt {
+    BlockStmt block;
+};
 struct RetStmt {
     Expr* expr;
 };
