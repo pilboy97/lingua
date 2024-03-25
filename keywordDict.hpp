@@ -115,6 +115,7 @@ void initDict() {
     kDict.push("break", BREAK);
     kDict.push("continue", CONTINUE);
     kDict.push("defer", DEFER);
+    kDict.push("super", SUPER);
     kDict.push(":", COLON);
     kDict.push(";", SCOLON);
 }

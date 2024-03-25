@@ -112,6 +112,8 @@ IInstance toIInstance(Pointer ptr);
 const char* toStr(Pointer ptr);
 bool isStr(Type type);
 
+std::vector<int> getSupers(int cid);
+
 Pointer makeClosure(int fid, Pointer _this);
 Pointer makeArray(LiteralArray arr);
 Pointer makeInstance(LiteralObject obj);
@@ -618,8 +620,6 @@ void nullPointerException() {
 void run(Program prog) {
     initProc();
 
-    mem.push_back(0);
-    hmem.push_back(0);
 
     ll pPrint = makeClosure(-1, nil).ptr;
     ll pLen = makeClosure(-2, nil).ptr;
@@ -719,10 +719,22 @@ bool isAssAble(Type dst, Type src) {
     if (src.kind == 0) return true;
     
     int cid = findClass(src.name);
+    int cid2 = findClass(dst.name);
     int iid = findInterface(dst.name);
-
-    if (iid != -1 && cid != -1) {
-        return isImplOf(_interface[iid], _class[cid]);
+    
+    if(cid != -1 && cid2 != -1) {
+        auto supers = getSupers(cid);
+        for(int i = 0;i < supers.size();i++) {
+            if(supers[i] == cid2) {
+                return true;
+            }
+        }
+        return false;
+    }
+    else if(cid != -1 && iid != -1) {
+        if (iid != -1 && cid != -1) {
+            return isImplOf(_interface[iid], _class[cid]);
+        }
     }
 
     return false;
@@ -739,37 +751,43 @@ void assign(Pointer dst, Pointer src) {
     else {
         ll iid = findInterface(dst.type.name);
         ll cid = findClass(src.type.name);
+        ll cid2 = findClass(dst.type.name);
 
-        DefInterface in = _interface[iid];
-        DefClass cl = _class[cid];
+        if(cid != -1 && cid2 != -1) {
+            access(dst) = access(src);
+        }
+        else {
+            DefInterface in = _interface[iid];
+            DefClass cl = _class[cid];
 
-        std::vector<ll> data;
+            std::vector<ll> data;
 
-        data.push_back(findClass(src.type.name));
-        data.push_back(access(src));
+            data.push_back(findClass(src.type.name));
+            data.push_back(access(src));
 
-        for (int i = 0; i < in.method.size(); i++) {
-            auto m = in.method[i];
-            for (int j = 0; j < cl.method.size(); j++) {
-                auto m2 = cl.method[j];
+            for (int i = 0; i < in.method.size(); i++) {
+                auto m = in.method[i];
+                for (int j = 0; j < cl.method.size(); j++) {
+                    auto m2 = cl.method[j];
 
-                if (strcmp(m.name, m2.name) == 0) {
-                    data.push_back(access(makeClosure(m2.idx, src)));
+                    if (strcmp(m.name, m2.name) == 0) {
+                        data.push_back(access(makeClosure(m2.idx, src)));
+                    }
                 }
             }
+
+            ll ptr = hAlloc(2);
+            ll ptr2 = hAlloc(data.size());
+
+            hAccess(ptr) = ptr2;
+            hAccess(pAdd(ptr, 1)) = iid;
+
+            for (int i = 0; i < data.size(); i++) {
+                hAccess(pAdd(ptr2, i)) = data[i];
+            }
+
+            access(dst) = ptr;
         }
-
-        ll ptr = hAlloc(2);
-        ll ptr2 = hAlloc(data.size());
-
-        hAccess(ptr) = ptr2;
-        hAccess(pAdd(ptr, 1)) = iid;
-
-        for (int i = 0; i < data.size(); i++) {
-            hAccess(pAdd(ptr2, i)) = data[i];
-        }
-
-        access(dst) = ptr;
     }
 }
 Pointer findLVar(const char* name) {
@@ -1328,29 +1346,35 @@ Pointer makeInstance(LiteralObject obj) {
 
     int ptr = hAlloc(2);
 
-    DefClass cl = _class[cid];
     std::vector<ll> data;
 
-    for (int i = 0; i < cl.field.size(); i++) {
-        auto f1 = cl.field[i];
-        bool found = false;
-        for (int j = 0; j < obj.init.list.size(); j++) {
-            auto f2 = obj.init.list[j];
+    auto supers = getSupers(cid);
 
-            if (strcmp(f1.name, f2.first) == 0) {
-                found = true;
-                
-                data.push_back(sAccess(runExpr(f2.second).ptr));
+    for(int k = 0;k < supers.size();k++) {
+        auto cl = _class[supers[k]];
+        for (int i = 0; i < cl.field.size(); i++) {
+            auto f1 = cl.field[i];
+            bool found = false;
+            for (int j = 0; j < obj.init.list.size(); j++) {
+                auto f2 = obj.init.list[j];
 
-                break;
+                if (strcmp(f1.name, f2.first) == 0) {
+                    found = true;
+                    auto e = runExpr(f2.second);
+                    data.push_back(sAccess(e.ptr));
+
+                    ref(pAccess(e));
+
+                    break;
+                }
+            }
+            if (!found) {
+                data.push_back(0);
             }
         }
-        if (!found) {
-            data.push_back(0);
-        }
     }
-
-    int p = hAlloc(cl.field.size());
+    
+    int p = hAlloc(data.size());
 
     hAccess(ptr) = p;
     hAccess(pAdd(ptr, 1)) = cid;
@@ -1896,6 +1920,8 @@ Pointer runExpr12(Expr12 e) {
 Pointer runFactor(Factor f) {
     Pointer ret;
 
+    int cid;
+
     switch (f.kind) {
     case OBR:
         ret = runExpr(*(Expr*)f.ptr);
@@ -1941,6 +1967,21 @@ Pointer runFactor(Factor f) {
             panic("runFactor: cannot use \"this\"");
         }
         break;
+    case SUPER:
+        ret = proc.STACK.back()._this;
+        if (ret.ptr == 0) {
+            panic("runFactor: cannot use super");
+        }
+
+        cid = findClass(ret.type.name);
+        if(_class[cid].super == NULL) {
+            panic("runFactor: this class has no super class");
+        }
+
+        ret.type.kind = WORD;
+        ret.type.name = _class[cid].super;
+
+        break;
     case FUNC:
         ret = makeClosure(*(int*)f.ptr, proc.STACK.back()._this);
         break;
@@ -1956,30 +1997,46 @@ Pointer converse(Pointer x, Type type) {
     }
 }
 Pointer runMember(Pointer ptr, Word member) {
-    if (findClass(ptr.type.name) != -1) {
+    int iid, cid;
+    cid = findClass(ptr.type.name);
+    iid = findInterface(ptr.type.name);
+
+    if (cid != -1) {
         if (access(ptr) == 0) { nullPointerException(); }
-        auto ins = toInstance(ptr);
         ptr = pAccess(ptr);
 
-        if (ins.data.size() != ins.cl.field.size()) panic("runMember: wrong data");
-        for (int i = 0; i < ins.cl.field.size(); i++) {
-            if (strcmp(ins.cl.field[i].name, member.word) == 0) {
-                Pointer ret = ptr;
+        auto supers = getSupers(cid);
+        std::reverse(supers.begin(), supers.end());
 
-                ret.type = ins.cl.field[i].type;
-                ret.ptr = hAccess(ret.ptr);
-                ret.ptr = pAdd(ret.ptr, i);
-                return ret;
+        int sum = 0;
+        for(int i = 0;i < supers.size();i++)
+            sum += _class[supers[i]].field.size();
+
+        for (int j = 0;j < supers.size();j++) {
+            auto cl = _class[supers[j]];
+            sum -= cl.field.size();
+            for (int i = 0; i < cl.field.size(); i++) {
+                if (strcmp(cl.field[i].name, member.word) == 0) {
+                    Pointer ret = ptr;
+
+                    ret.type = cl.field[i].type;
+                    ret.ptr = hAccess(ret.ptr);
+                    ret.ptr = pAdd(ret.ptr, i + sum);
+                    return ret;
+                }
             }
         }
-        for (int i = 0; i < ins.cl.method.size(); i++) {
-            if (strcmp(ins.cl.method[i].name, member.word) == 0) {
-                return makeClosure(ins.cl.method[i].idx, pAlloc(ptr));
+        for (int j = 0;j < supers.size();j++) {
+            auto cl = _class[supers[j]];
+            for (int i = 0; i < cl.method.size(); i++) {
+                if (strcmp(cl.method[i].name, member.word) == 0) {
+                    return makeClosure(cl.method[i].idx, pAlloc(ptr));
+                }
             }
         }
         panicf("runMember: it has no member %s", member.word);
     }
-    else if(findInterface(ptr.type.name) != -1) {
+    else if(iid != -1) {
         auto iins = toIInstance(ptr);
         ptr = pAccess(ptr);
 
@@ -2180,5 +2237,17 @@ void varStat() {
             }
         }
     }
+}
+std::vector<int> getSupers(int cid) {
+    std::vector<int> ret;
+    ret.push_back(cid);
+    while(_class[cid].super != NULL) {
+        cid = findClass(_class[cid].super);
+        ret.push_back(cid);
+    }
+
+    std::reverse(ret.begin(), ret.end());
+
+    return ret;
 }
 #endif

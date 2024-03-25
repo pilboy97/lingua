@@ -7,6 +7,7 @@
 #include "addScolon.hpp"
 #include "RDP.hpp"
 #include "run.hpp"
+#include "panic.hpp"
 
 #define MAX_SOURCE_LENGTH 1000000
 
@@ -18,6 +19,9 @@ void init() {
 }
 char* readWholeFile(const char* path) {
     FILE *fp = fopen(path, "r");
+    if(fp == NULL) {
+        panicf("cannot open file %s", path);
+    }
     int size = fread(buffer, sizeof(char), MAX_SOURCE_LENGTH, fp);
     fclose(fp);
     buffer[size] = '\0';

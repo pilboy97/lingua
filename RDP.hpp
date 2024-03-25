@@ -199,6 +199,9 @@ Factor parseFactor() {
     else if (chk(THIS)) {
         return Factor{ THIS, NULL };
     }
+    else if (chk(SUPER)) {
+        return Factor{SUPER, NULL};
+    }
     else if(chk(FUNC)) {
         header--;
 
@@ -677,6 +680,14 @@ DefClass parseDefClass() {
 
     must(CLASS);
     ret.name = must(WORD).str;
+
+    if(chk(COLON)) {
+        ret.super = must(WORD).str;
+    }
+    else {
+        ret.super = NULL;
+    }
+
     must(OBL);
 
     while(header < code.size() && code[header].kind != CBL && code[header].kind != SEP) {

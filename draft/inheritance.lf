@@ -1,0 +1,32 @@
+class Human {
+    name []byte
+    age num
+    ---
+    introduce() {
+        print("name: " + this.name + ", age: " + this.age + "\n")
+    }
+}
+class Teacher : Human {
+    subject []byte
+    ---
+    introduce() {
+        super.introduce()
+        print("I'm a " + this.subject + " teacher\n")
+    }
+}
+func main() {
+    var minsu = Human {
+        name: "minsu",
+        age : 10,
+    }
+    var minji = Teacher {
+        name: "minji",
+        age : 20,
+        subject: "math",
+    }
+    var x Human = minji
+
+    minsu.introduce()
+    minji.introduce()
+    x.introduce()
+}

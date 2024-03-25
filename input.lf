@@ -1,17 +1,27 @@
-class Proc {
-    f func(num) -> num
-}
 func main() {
-    var p Proc = Proc{}
-    p.f = func(x num) -> num {
-        return x * x
+    var array = []num{}
+    var N = 100
+    var i num
+    var j num
+
+    for(i = N;i >= 1;i = i - 1) {
+        append(array, i)
     }
 
-    print("" + p.f(4) + "\n")
+    print("!")
 
-    p.f = func(x num) -> num {
-        return -x
+    for(i = 0;i < N;i = i + 1) {
+        for(j = 0;j < N - 1;j = j + 1) {
+            if(array[j] > array[j + 1]) {
+                var tmp num
+                tmp = array[j]
+                array[j] = array[j + 1]
+                array[j + 1] = tmp
+            }
+        }
     }
-    
-    print("" + p.f(4) + "\n")
+
+    for(i = 0;i < len(array);i = i + 1) {
+        print("" + array[i] + "\n")
+    }
 }

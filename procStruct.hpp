@@ -146,6 +146,7 @@ struct DefInterface {
 };
 struct DefClass {
     const char* name;
+    const char* super;
     std::vector<Field> field;
     std::vector<Method> method;
 };

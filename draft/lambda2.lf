@@ -1,0 +1,17 @@
+class Proc {
+    f func(num) -> num
+}
+func main() {
+    var p Proc = Proc{}
+    p.f = func(x num) -> num {
+        return x * x
+    }
+
+    print("" + p.f(4) + "\n")
+
+    p.f = func(x num) -> num {
+        return -x
+    }
+    
+    print("" + p.f(4) + "\n")
+}
