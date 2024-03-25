@@ -1,16 +1,17 @@
+class Proc {
+    f func(num) -> num
+}
 func main() {
-    var divider = []num{}
-    var N = 12
-    var i num
-    for (i = 1;i <= N;i = i + 1) {
-        if(N % i == 0) {
-            append(divider, i)
-        }
+    var p Proc = Proc{}
+    p.f = func(x num) -> num {
+        return x * x
     }
 
-    for(i = 0;i < len(divider);i = i + 1) {
-        print("" + divider[i] + "\n")
+    print("" + p.f(4) + "\n")
+
+    p.f = func(x num) -> num {
+        return -x
     }
-    shrink(divider)
-    print("" + len(divider) + " " + cap(divider) + "\n")
+    
+    print("" + p.f(4) + "\n")
 }
