@@ -11,5 +11,6 @@ func main() {
     for(i = 0;i < len(divider);i = i + 1) {
         print("" + divider[i] + "\n")
     }
+    shrink(divider)
     print("" + len(divider) + " " + cap(divider) + "\n")
 }

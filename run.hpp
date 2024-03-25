@@ -463,6 +463,25 @@ Pointer nfappend(FCall args) {
 
     return nil;
 }
+Pointer nfshrink(FCall args) {
+    if (args.list.size() != 1) panic("shrink: argument mismatch");
+
+    Pointer ptr = runExpr(args.list[0]);
+    Array arr = toArray(ptr);
+
+    ptr = pAccess(ptr);
+
+    if (!isArray(ptr.type)) panic("shrink: argument mismatch: not Array");
+
+    ll ndata = hAlloc(arr.len);
+    for(int i = 0;i < arr.len;i++) {
+        hAccess(pAdd(ndata, i)) = arr.data[i];
+    }
+
+    hAccess(ptr.ptr) = ndata;
+    hAccess(pAdd(ptr.ptr, 2)) = arr.len;
+    return nil;
+}
 ll& access(Pointer p) {
     if (p.ptr < 0) return hAccess(p.ptr);
     if (p.ptr == 0) nullPointerException();
@@ -606,14 +625,15 @@ void run(Program prog) {
     ll pLen = makeClosure(-2, nil).ptr;
     ll pCap = makeClosure(-3, nil).ptr;
     ll pAppend = makeClosure(-4, nil).ptr;
+    ll pShrink = makeClosure(-5, nil).ptr;
 
     _fn = prog.fn;
     _nf.push_back(NFunc{});
     _nf.push_back(NFunc{Type{FUNC, "", {tVoid,tStr}}, "print", nfPrint, pPrint});
-    _nf.push_back(NFunc{ Type{FUNC, "", {Type{OSB, "", {tAny}}, tNum}}, "len", nflen, pLen });
-    _nf.push_back(NFunc{ Type{FUNC, "", {Type{OSB, "", {tAny}}, tNum}}, "cap", nfcap, pCap });
-    _nf.push_back(NFunc{ Type{FUNC, "", {Type{OSB, "", {tAny}}, tAny}}, "append", nfappend, pAppend });
-
+    _nf.push_back(NFunc{ Type{FUNC, "", {tNum, Type{OSB, "", {tAny}}}}, "len", nflen, pLen });
+    _nf.push_back(NFunc{ Type{FUNC, "", {tNum, Type{OSB, "", {tAny}}}}, "cap", nfcap, pCap });
+    _nf.push_back(NFunc{ Type{FUNC, "", {tVoid, Type{OSB, "", {tAny}}}}, "append", nfappend, pAppend });
+    _nf.push_back(NFunc{Type{FUNC, "", {tVoid, Type{OSB, "", {tAny}}}}, "shrink", nfshrink, pShrink});
 
     for (int i = 0; i < prog.childs.size(); i++) {
         auto duo = prog.childs[i];
