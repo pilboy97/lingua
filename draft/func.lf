@@ -5,5 +5,5 @@ func f(x num, y num) -> num {
 func main() {
     var x = 1
     var y = 2
-    printf("%d + %d = %d", x, y, f(x, y))
+    print("" + x + " + " + y + " = " + f(x, y) + "\n")
 }

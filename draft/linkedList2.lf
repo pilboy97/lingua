@@ -7,15 +7,15 @@ class LinkedList {
     begin Node
     ---
     append(value num) {
-        if self.begin is null {
-            self.begin = Node {
+        if(this.begin is null) {
+            this.begin = Node {
                 value: value,
             }
             return
         }
 
-        var it = self.begin
-        for it.next is not null {
+        var it = this.begin
+        for(it.next is not null) {
             it = it.next
         }
 
@@ -24,9 +24,9 @@ class LinkedList {
         }
     }
     print() {
-        var it = self.begin
-        for it is not null {
-            printf("%d\n", it.value)
+        var it = this.begin
+        for(it is not null) {
+            print("" + it.value + "\n")
             it = it.next
         }
     }

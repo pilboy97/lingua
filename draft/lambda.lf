@@ -4,7 +4,7 @@ func main() {
         return x
     }
 
-    printf("%d", f()) // 1
+    print("" + f() + "\n") // 1
     x = 2
-    printf("%d", f()) // 1
+    print("" + f() + "\n") // 1
 }

@@ -1,10 +1,10 @@
 func main() {
     var i num
-    for i = 1; i <= 10; i++ {
-        if i % 2 == 0 {
-            printf("%d is even number\n", i)
+    for (i = 1; i <= 10; i = i + 1) {
+        if(i % 2 == 0) {
+            print("" + i + " is even number\n")
         } else {
-            printf("%d is odd number\n", i)
+            print("" + i + " is odd number\n")
         }
     }
 }

@@ -2,6 +2,7 @@
 #define __RUN_HPP__
 
 #include "procStruct.hpp"
+#include "panic.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -1852,7 +1853,7 @@ Pointer runFactor(Factor f) {
         }
 
         if (ret.ptr == 0) {
-            panic("runFactor: cannot find var");
+            panicf("runFactor: cannot find var %s", ((Word*)f.ptr)->word);
         }
 
         break;

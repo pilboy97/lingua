@@ -24,23 +24,21 @@ double makeReal(unsigned long long x, unsigned long long y) {
     a = x;
     b = y;
 
-    while(1.0 < b) {
+    while(1.0 <= b) {
         b /= 10;
     }
 
     return a + b;
 }
-unsigned long long parseNumber(const char* str, int &header, int length) {
+unsigned long long parseNumber(const char* str, int &header, int length, int base) {
     //parse number that has less than 'length' digits
 
     int len = strlen(str);
 
     unsigned long long ret = 0;
 
-    if(hasPrefix("0x", str)) {
+    if(base == 16) {
         // hexadecimal number
-
-        header += 2;
         while(header < len && ((str[header] >= '0' && str[header] <= '9') || (str[header] >= 'a' && str[header] <= 'f' || (str[header] >= 'A' && str[header] <= 'F')))) {
             ret *= 16;
             if(str[header] >= '0' && str[header] <= '9') {
@@ -56,9 +54,8 @@ unsigned long long parseNumber(const char* str, int &header, int length) {
             header++;
         }
     }
-    else if(hasPrefix("0", str)) {
+    else if(base == 8) {
         // octal number
-        header += 1;
         while(header < len && (str[header] >= '0' && str[header] <= '7')) {
             ret *= 8;
             if(str[header] >= '0' && str[header] <= '7') {
@@ -112,10 +109,21 @@ std::vector<Token> parse(const char* str) {
         }
         else if(str[i] >= '0' && str[i] <= '9') {
             // literal number
-            unsigned long long x = parseNumber(str, i, 32);
+            int base = 10;
+
+            if(str[i] == '0' && i + 1 < len && str[i + 1] == 'x') {
+                base = 16;
+                i += 2;
+            }
+            else if(str[i] == '0') {
+                base = 8;
+                i++;
+            }
+
+            unsigned long long x = parseNumber(str, i, 32, base);
             if(i < len && str[i] == '.'){
                 i++;
-                unsigned long long y = parseNumber(str, i, 32);
+                unsigned long long y = parseNumber(str, i, 32, base);
                 ret.push_back(Token{LREAL, NULL, makeReal(x, y), 0, line, i - sp});
             }
             else
@@ -131,7 +139,7 @@ std::vector<Token> parse(const char* str) {
                 //literal byte number
 
                 i++;
-                Token t = {LBYTE, NULL, 0, parseNumber(str, i, 2), line, i-sp-1};
+                Token t = {LBYTE, NULL, 0, parseNumber(str, i, 2, 16), line, i-sp-1};
 
                 ret.push_back(t);
             }

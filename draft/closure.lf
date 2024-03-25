@@ -1,5 +1,5 @@
 func plus(x num) -> func(num) -> num {
-    return func (y num) -> num {
+    return func [x] (y num) -> num {
         return x + y
     }
 }
@@ -8,6 +8,6 @@ func main() {
     var plus3 = plus(3)
     var plus5 = plus(5)
 
-    printf("%d", plus3(1)) // 4
-    printf("%d", plus5(1)) // 6
+    print("" + plus3(1) + "\n") // 4
+    print("" + plus5(1) + "\n") // 6
 }

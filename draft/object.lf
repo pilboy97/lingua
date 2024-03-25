@@ -3,7 +3,7 @@ class Person {
     age  num
     ---
     introduce() {
-        printf("Hi, my name is %s! I'm %d years old.\n", self.name, self.age)
+        print("Hi, my name is " + this.name + "! I'm " + this.age + " years old.\n")
     }
 }
 
@@ -12,9 +12,6 @@ func main() {
         name: "Min Pilgi",
         age: 25,
     }
-    defer func(){
-        delete me
-    }()
 
     me.introduce()
 }

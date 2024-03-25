@@ -19,8 +19,8 @@ func main() {
 
     var it = x
 
-    for it is not null {
-        printf("%d\n", it.value)
+    for(it is not null) {
+        print("" + it.value + "\n")
         it = it.next
     }
 }
