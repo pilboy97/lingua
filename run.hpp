@@ -37,6 +37,7 @@ struct IInstance {
     DefClass cl;
 
     std::vector<ll> data;
+    ll org;
 };
 struct Pointer {
     Type type;
@@ -53,7 +54,7 @@ struct Frame {
     std::vector<std::vector<std::pair<const char*, Pointer>>> vars;
 };
 
-typedef Pointer(*func)(std::vector<Pointer> args);
+typedef Pointer(*func)(std::vector<Pointer> args, jmp_buf jmp);
 typedef void(*act)(Pointer ptr);
 
 struct NFunc {
@@ -65,6 +66,8 @@ struct NFunc {
 struct Proc {
     ll SP;
     ll ESP;
+    
+    ll ERR;
 
     std::vector<Frame> STACK;
 };
@@ -86,6 +89,7 @@ Type tByte = Type{ BYTE };
 Type tBool = Type{ BOOL };
 Type tReal = Type{ REAL };
 Type tStr = Type{ OSB, "", {tByte} };
+Type tError = { WORD,"Error",{} };
 
 Pointer nil = { tVoid, false, 0 };
 
@@ -119,8 +123,8 @@ std::vector<int> getSupers(int cid);
 bool isSuper(int cid, int scid);
 
 Pointer makeClosure(int fid, Pointer _this);
-Pointer makeArray(LiteralArray arr);
-Pointer makeInstance(LiteralObject obj);
+Pointer makeArray(LiteralArray arr, jmp_buf jmp);
+Pointer makeInstance(LiteralObject obj, jmp_buf jmp);
 Pointer makeString(LiteralString str);
 
 Pointer converse(Pointer x, Type type);
@@ -129,38 +133,41 @@ void memStat();
 void objStat();
 void varStat();
 
+void viewErr();
+void makeErr(const char);
+
 void initProc();
 
 void run(Program prog);
 
 void runStmt(Stmt stmt, jmp_buf jmp);
-void runBlockEnd();
+void runBlockEnd(jmp_buf jmp);
 void runBlockStmt(BlockStmt stmt, jmp_buf jmp);
 void runIfStmt(IfStmt stmt, jmp_buf jmp);
 void runForStmt(ForStmt stmt, jmp_buf jmp);
 void runRetStmt(RetStmt stmt, jmp_buf jmp);
 
-Pointer runFCall(Pointer ptr, FCall args);
-Pointer runIdx(Pointer ptr, Idx idx);
+Pointer runFCall(Pointer ptr, FCall args, jmp_buf jmp);
+Pointer runIdx(Pointer ptr, Idx idx, jmp_buf jmp);
 Pointer runMember(Pointer ptr, Word word);
 
-Pointer runExpr_1(Expr_1 e);
-Pointer runExpr(Expr e);
-Pointer runExpr1(Expr1 e);
-Pointer runExpr2(Expr2 e);
-Pointer runExpr3(Expr3 e);
-Pointer runExpr4(Expr4 e);
-Pointer runExpr5(Expr5 e);
-Pointer runExpr6(Expr6 e);
-Pointer runExpr7(Expr7 e);
-Pointer runExpr8(Expr8 e);
-Pointer runExpr9(Expr9 e);
-Pointer runExpr10(Expr10 e);
-Pointer runExpr11(Expr11 e);
-Pointer runExpr12(Expr12 e);
-Pointer runFactor(Factor f);
+Pointer runExpr_1(Expr_1 e, jmp_buf jmp);
+Pointer runExpr(Expr e, jmp_buf jmp);
+Pointer runExpr1(Expr1 e, jmp_buf jmp);
+Pointer runExpr2(Expr2 e, jmp_buf jmp);
+Pointer runExpr3(Expr3 e, jmp_buf jmp);
+Pointer runExpr4(Expr4 e, jmp_buf jmp);
+Pointer runExpr5(Expr5 e, jmp_buf jmp);
+Pointer runExpr6(Expr6 e, jmp_buf jmp);
+Pointer runExpr7(Expr7 e, jmp_buf jmp);
+Pointer runExpr8(Expr8 e, jmp_buf jmp);
+Pointer runExpr9(Expr9 e, jmp_buf jmp);
+Pointer runExpr10(Expr10 e, jmp_buf jmp);
+Pointer runExpr11(Expr11 e, jmp_buf jmp);
+Pointer runExpr12(Expr12 e, jmp_buf jmp);
+Pointer runFactor(Factor f, jmp_buf jmp);
 
-void defVar(DefVar var);
+void defVar(DefVar var, jmp_buf jmp);
 void defFunc(int fid);
 void defClass(DefClass cl);
 void defInterface(DefInterface in);
@@ -381,7 +388,7 @@ bool isStr(Type type) {
     return isArray(type) && isByte(type.add[0]);
 }
 
-Pointer nfPrint(std::vector<Pointer> args) {
+Pointer nfPrint(std::vector<Pointer> args, jmp_buf jmp) {
     Pointer ptr = args[0];
  
     if (!isStr(ptr.type)) panic("nfPrint: argument mismatch");
@@ -408,7 +415,7 @@ Pointer nfPrint(std::vector<Pointer> args) {
 
     return nil;
 }
-Pointer nflen(std::vector<Pointer> args) {
+Pointer nflen(std::vector<Pointer> args, jmp_buf jmp) {
     if (args.size() != 1) panic("len: argument mismatch");
 
     Pointer ptr = args[0];
@@ -420,7 +427,7 @@ Pointer nflen(std::vector<Pointer> args) {
 
     return Pointer{tNum, false, sAlloc(len)};
 }
-Pointer nfcap(std::vector<Pointer> args) {
+Pointer nfcap(std::vector<Pointer> args, jmp_buf jmp) {
     if (args.size() != 1) panic("cap: argument mismatch");
 
     Pointer ptr = args[0];
@@ -432,7 +439,7 @@ Pointer nfcap(std::vector<Pointer> args) {
 
     return Pointer{tNum, false, sAlloc(cap)};
 }
-Pointer nfappend(std::vector<Pointer> args) {
+Pointer nfappend(std::vector<Pointer> args, jmp_buf jmp) {
     if (args.size() != 2) panic("append: argument mismatch");
 
     Pointer ptr = args[0];
@@ -475,7 +482,7 @@ Pointer nfappend(std::vector<Pointer> args) {
 
     return nil;
 }
-Pointer nfshrink(std::vector<Pointer> args) {
+Pointer nfshrink(std::vector<Pointer> args, jmp_buf jmp) {
     if (args.size() != 1) panic("shrink: argument mismatch");
 
     Pointer ptr = args[0];
@@ -493,6 +500,33 @@ Pointer nfshrink(std::vector<Pointer> args) {
     hAccess(ptr.ptr) = ndata;
     hAccess(pAdd(ptr.ptr, 2)) = arr.len;
     return nil;
+}
+Pointer nfRaise(std::vector<Pointer> args, jmp_buf jmp) {
+    Pointer err = args[0];
+    int iid = findInterface("Error");
+    if (iid == -1) panic("cannot find interface Error");
+
+
+    if (!isAssAble(err.type, tError)) {
+        panic("error should implements Error");
+    }
+
+    err = converse(err, tError);
+    proc.ERR = access(err);
+    ref(pAccess(err));
+
+    longjmp(jmp, -1);
+
+    return nil;
+}
+Pointer nfRecover(std::vector<Pointer> args, jmp_buf jmp) {
+    if (proc.ERR == 0) return nil;
+    Pointer err = Pointer{ tError, false, sAlloc(proc.ERR) };
+
+    proc.STACK.back().tmp.push_back(err);
+
+    proc.ERR = 0;
+    return err;
 }
 ll& access(Pointer p) {
     if (p.ptr < 0) return hAccess(p.ptr);
@@ -643,6 +677,8 @@ void run(Program prog) {
     ll pCap = makeClosure(-3, nil).ptr;
     ll pAppend = makeClosure(-4, nil).ptr;
     ll pShrink = makeClosure(-5, nil).ptr;
+    ll pRaise = makeClosure(-6, nil).ptr;
+    ll pRecover = makeClosure(-7, nil).ptr;
 
     _fn = prog.fn;
     _nf.push_back(NFunc{});
@@ -651,6 +687,8 @@ void run(Program prog) {
     _nf.push_back(NFunc{ Type{FUNC, "", {tNum, tAny}}, "cap", nfcap, pCap });
     _nf.push_back(NFunc{ Type{FUNC, "", {tVoid, tAny, tAny}}, "append", nfappend, pAppend });
     _nf.push_back(NFunc{ Type{FUNC, "", {tVoid, tAny}} , "shrink", nfshrink, pShrink});
+    _nf.push_back(NFunc{ Type{FUNC, "", {tVoid, tError}} , "raise", nfRaise, pRaise });
+    _nf.push_back(NFunc{ Type{FUNC, "", {tError}} , "recover", nfRecover, pRecover });
 
     for (int i = 0; i < prog.childs.size(); i++) {
         auto duo = prog.childs[i];
@@ -681,8 +719,12 @@ void run(Program prog) {
     GP = proc.ESP;
 
     jmp_buf jmp;
-    if (setjmp(jmp) == 0) {
-        runFCall(findGVar("main"), FCall{});
+    int jv;
+    if ((jv = setjmp(jmp)) == 0) {
+        runFCall(findGVar("main"), FCall{}, jmp);
+    }
+    else {
+        viewErr();
     }
 }
 
@@ -697,7 +739,7 @@ void debug() {
     objStat();
     varStat();
 }
-void defVar(DefVar var) {
+void defVar(DefVar var, jmp_buf jmp) {
     auto name = var.name;
     if (findLVar(name).ptr != 0) panicf("defVar: %s is already exists");
 
@@ -714,14 +756,14 @@ void defVar(DefVar var) {
     }
 
     if (var.type == NULL) {
-        Pointer ptr = runExpr(*var.init);
+        Pointer ptr = runExpr(*var.init, jmp);
         Pointer ret = { ptr.type, ptr.lv, sAlloc(0) };
         assign(ret, ptr);
         newLVar(name, ret);
         return;
     }
 
-    Pointer ptr = runExpr(*var.init);
+    Pointer ptr = runExpr(*var.init, jmp);
     if (!isAssAble(*var.type, ptr.type)) {
         panic("defVar: cannot initialize variable: type mismatch");
     }
@@ -749,16 +791,15 @@ bool isAssAble(Type dst, Type src) {
         }
         return false;
     }
-    else if(cid != -1 && iid != -1) {
-        if (iid != -1 && cid != -1) {
-            return isImplOf(_interface[iid], _class[cid]);
-        }
+    else if(iid != -1 && cid != -1) {
+        return isImplOf(_interface[iid], _class[cid]);
     }
 
     return false;
 }
 void assign(Pointer dst, Pointer src) {
-    if (!isAssAble(dst.type, src.type)) panic("assign: cannot assign: type mismatch");
+    if (!isAssAble(dst.type, src.type))
+        panic("assign: cannot assign: type mismatch");
 
     dref(pAccess(dst));
     ref(pAccess(src));
@@ -775,6 +816,7 @@ void assign(Pointer dst, Pointer src) {
     }
 }
 Pointer findLVar(const char* name) {
+    if (name == NULL) return nil;
     auto frame = proc.STACK.back().vars;
     for (int i = frame.size() - 1; i >= 0; i--) {
         for (int j = 0; j < frame[i].size(); j++) {
@@ -787,9 +829,10 @@ Pointer findLVar(const char* name) {
             }
         }
     }
-    return Pointer{ tVoid, false, 0 };
+    return nil;
 }
 Pointer findGVar(const char* name) {
+    if (name == NULL) return nil;
     auto frame = proc.STACK.front().vars;
     for (int i = frame.size() - 1; i >= 0; i--) {
         for (int j = 0; j < frame[i].size(); j++) {
@@ -809,6 +852,7 @@ Pointer findGVar(const char* name) {
     else return nil;
 }
 int findClass(const char* name) {
+    if (name == NULL) return -1;
     for (int i = 0; i < _class.size(); i++) {
         if (strcmp(_class[i].name, name) == 0) {
             return i;
@@ -817,6 +861,7 @@ int findClass(const char* name) {
     return -1;
 }
 int findInterface(const char* name) {
+    if (name == NULL) return -1;
     for (int i = 0; i < _interface.size(); i++) {
         if (strcmp(_interface[i].name, name) == 0) {
             return i;
@@ -897,11 +942,11 @@ void runStmt(Stmt stmt, jmp_buf jmp) {
         longjmp(jmp, 3);
         break;
     case VAR:
-        defVar(*(DefVar*)stmt.stmt);
+        defVar(*(DefVar*)stmt.stmt, jmp);
         ESP = proc.ESP;
         break;
     case SCOLON:
-        runExpr_1(*(Expr_1*)stmt.stmt);
+        runExpr_1(*(Expr_1*)stmt.stmt, jmp);
         break;
     case DEFER:
         proc.STACK.back().defer.back().push_back(*(DeferStmt*)stmt.stmt);
@@ -916,7 +961,7 @@ void runStmt(Stmt stmt, jmp_buf jmp) {
         puts("");
     }
 }
-void runBlockEnd() {
+void runBlockEnd(jmp_buf jmp) {
     for(int i = proc.STACK.back().defer.back().size() - 1;i >= 0;i--) {
         auto block = proc.STACK.back().defer.back()[i].block;
 
@@ -935,6 +980,9 @@ void runBlockEnd() {
         else if(jv == 3) {
             panic("runBlockEnd: wrong continue");
         }
+        else {
+            longjmp(jmp, -1);
+        }
     }
 }
 void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
@@ -948,12 +996,18 @@ void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
         if((jv = setjmp(jp)) == 0)
             runStmt(s, jp);
         else {
-            runBlockEnd();
+            runBlockEnd(jmp);
             exitScope();
-            longjmp(jmp, jv);
+            if(jv != -1)
+                longjmp(jmp, jv);
+            else {
+                if (proc.ERR != 0)
+                    longjmp(jmp, -1);
+            }
+            return;
         }
     }
-    runBlockEnd();
+    runBlockEnd(jmp);
     exitScope();
 }
 void runIfStmt(IfStmt stmt, jmp_buf jmp) {
@@ -961,7 +1015,7 @@ void runIfStmt(IfStmt stmt, jmp_buf jmp) {
         auto cond = stmt._if[i].first;
         auto body = stmt._if[i].second;
 
-        if (toBool(runExpr(cond))) {
+        if (toBool(runExpr(cond, jmp))) {
             runBlockStmt(body, jmp);
             return;
         }
@@ -972,11 +1026,11 @@ void runIfStmt(IfStmt stmt, jmp_buf jmp) {
 }
 void runForStmt(ForStmt stmt, jmp_buf jmp) {
     if (stmt.init != NULL) {
-        runExpr_1(*stmt.init);
+        runExpr_1(*stmt.init, jmp);
     }
 
     while (true) {
-        if (stmt.cond != NULL && !toBool(runExpr_1(*stmt.cond))) {
+        if (stmt.cond != NULL && !toBool(runExpr_1(*stmt.cond, jmp))) {
             break;
         }
 
@@ -997,18 +1051,18 @@ void runForStmt(ForStmt stmt, jmp_buf jmp) {
         }
 
         if (stmt.act != NULL) {
-            runExpr_1(*stmt.act);
+            runExpr_1(*stmt.act, jmp);
         }
     }
 }
-Pointer runFCall(Pointer ptr, FCall args) {
+Pointer runFCall(Pointer ptr, FCall args, jmp_buf jmp) {
     auto fn = toClosure(ptr);
     ptr = pAccess(ptr);
 
     std::vector<Pointer> arglist;
 
     for (int i = 0; i < args.list.size(); i++) {
-        arglist.push_back(runExpr(args.list[i]));
+        arglist.push_back(runExpr(args.list[i], jmp));
     }
 
     if (fn.fid >= 0) {
@@ -1030,6 +1084,8 @@ Pointer runFCall(Pointer ptr, FCall args) {
         proc.STACK.push_back(Frame());
         proc.STACK.back().vars.emplace_back();
         proc.STACK.back().defer.emplace_back();
+
+        proc.STACK.back().rType = def.ret;
 
         sAlloc(proc.SP);
         proc.SP = proc.ESP - 1;
@@ -1058,7 +1114,6 @@ Pointer runFCall(Pointer ptr, FCall args) {
             runBlockStmt(def.body, jp);
 
             proc.STACK.back().rValue = 0;
-            proc.STACK.back().rType = tVoid;
 
             longjmp(jp, 1);
         }
@@ -1069,8 +1124,7 @@ Pointer runFCall(Pointer ptr, FCall args) {
                 auto type = proc.STACK.back().rType;
                 auto value = proc.STACK.back().rValue;
 
-                ret = Pointer{ type, false, sAlloc(value) };
-                ret = pAccess(converse(ret, _fn[fn.fid].ret));
+                ret = Pointer{ type, false, value };
             }
             else {
                 ret = nil;
@@ -1082,16 +1136,21 @@ Pointer runFCall(Pointer ptr, FCall args) {
             proc.SP = mem[proc.SP];
             proc.STACK.pop_back();
 
-            if (ret.ptr != 0)
+            if (ret.ptr != 0) {
                 ret = pAlloc(ret);
+                proc.STACK.back().tmp.push_back(ret);
+            }
             
             return ret;
         }
         else if (jv == 2) {
             panic("runFCall: unexpected break");
         }
-        else {
+        else if (jv == 3){
             panic("runFCall: unexpected continue");
+        }
+        else {
+            longjmp(jmp, -1);
         }
 
         return nil;
@@ -1104,7 +1163,7 @@ Pointer runFCall(Pointer ptr, FCall args) {
         for (int i = 1; i < nf.type.add.size(); i++) {
             arglist[i - 1] = converse(arglist[i - 1], nf.type.add[i]);
         }
-        return (*nf.fn)(arglist);
+        return (*nf.fn)(arglist, jmp);
     }
 }
 void runRetStmt(RetStmt stmt, jmp_buf jmp) {
@@ -1113,11 +1172,16 @@ void runRetStmt(RetStmt stmt, jmp_buf jmp) {
         ret = nil;
     }
     else {
-        ret = pAccess(runExpr(*stmt.expr));
+        ret = pAccess(runExpr(*stmt.expr, jmp));
     }
+    
+    if (!isAssAble(proc.STACK.back().rType, ret.type)) {
+        panic("runRetStmt: type mismatch");
+    }
+    ret = converse(pAlloc(ret), proc.STACK.back().rType);
+    proc.STACK.back().rValue = access(ret);
 
-    proc.STACK.back().rType = ret.type;
-    proc.STACK.back().rValue = ret.ptr;
+    ref(pAccess(ret));
 
     longjmp(jmp, 1);
 }
@@ -1248,11 +1312,12 @@ IInstance toIInstance(Pointer ptr) {
     ret.in = _interface[iid];
 
     int p = hAccess(ptr.ptr);
-    for (int i = 0; i < ret.in.method.size(); i++) {
+    for (int i = 0; i < ret.in.method.size() + 2; i++) {
         ret.data.push_back(hAccess(pAdd(p, i)));
     }
 
     ret.cl = _class[ret.data[0]];
+    ret.org = ret.data[1];
 
     return ret;
 }
@@ -1312,7 +1377,7 @@ Pointer makeClosure(int fid, Pointer _this) {
     
     return ret;
 }
-Pointer makeArray(LiteralArray arr) {
+Pointer makeArray(LiteralArray arr, jmp_buf jmp) {
     Pointer ret;
     
     ll ptr = hAlloc(3);
@@ -1333,7 +1398,7 @@ Pointer makeArray(LiteralArray arr) {
     hAccess(pAdd(ptr, 2)) = cap;
 
     for (int i = 0; i < arr.elem.size(); i++) {
-        hAccess(pAdd(ptr2, i)) = sAccess(runExpr(arr.elem[i]).ptr);
+        hAccess(pAdd(ptr2, i)) = sAccess(runExpr(arr.elem[i], jmp).ptr);
     }
 
     ret.ptr = ptr;
@@ -1343,7 +1408,7 @@ Pointer makeArray(LiteralArray arr) {
     proc.STACK.back().tmp.push_back(ret);
     return ret;
 }
-Pointer makeInstance(LiteralObject obj) {
+Pointer makeInstance(LiteralObject obj, jmp_buf jmp) {
     Pointer ret;
     int cid = findClass(obj.type.name);
     
@@ -1367,7 +1432,7 @@ Pointer makeInstance(LiteralObject obj) {
 
                 if (strcmp(f1.name, f2.first) == 0) {
                     found = true;
-                    auto e = runExpr(f2.second);
+                    auto e = runExpr(f2.second, jmp);
                     if(f1.type.kind == WORD && e.type.kind == WORD && findInterface(f1.type.name) != -1 && findClass(e.type.name) != -1) {
                         Pointer ne = Pointer{f1.type, false, sAlloc(0)};
                         assign(ne, e);
@@ -1405,19 +1470,19 @@ Pointer makeInstance(LiteralObject obj) {
     return ret;
 }
 
-Pointer runExpr_1(Expr_1 e) {
+Pointer runExpr_1(Expr_1 e, jmp_buf jmp) {
     if (e.src == NULL) {
-        return runExpr(e.dst);
+        return runExpr(e.dst, jmp);
     }
 
-    auto src = runExpr(*e.src);
-    auto dst = runExpr(e.dst);
+    auto src = runExpr(*e.src, jmp);
+    auto dst = runExpr(e.dst, jmp);
 
     assign(dst, src);
     return nil;
 }
-Pointer runExpr(Expr e) {
-    auto init = runExpr1(e.childs[0]);
+Pointer runExpr(Expr e, jmp_buf jmp) {
+    auto init = runExpr1(e.childs[0], jmp);
     if (e.childs.size() == 1) {
         return init;
     }
@@ -1427,15 +1492,15 @@ Pointer runExpr(Expr e) {
     }
 
     for (int i = 1; i < e.childs.size(); i++) {
-        if (toBool(runExpr1(e.childs[i]))) {
+        if (toBool(runExpr1(e.childs[i], jmp))) {
             return pAlloc(Pointer{ tBool, false, sAlloc(true) });
         }
     }
 
     return Pointer{ tBool, false, sAlloc(false) };
 }
-Pointer runExpr1(Expr1 e) {
-    auto init = runExpr2(e.childs[0]);
+Pointer runExpr1(Expr1 e, jmp_buf jmp) {
+    auto init = runExpr2(e.childs[0], jmp);
     if (e.childs.size() == 1) {
         return init;
     }
@@ -1445,22 +1510,22 @@ Pointer runExpr1(Expr1 e) {
     }
 
     for (int i = 1; i < e.childs.size(); i++) {
-        if (toBool(runExpr2(e.childs[i]))) {
+        if (toBool(runExpr2(e.childs[i], jmp))) {
             return Pointer{ tBool, false, sAlloc(false) };
         }
     }
 
     return Pointer{ tBool, false, sAlloc(true) };
 }
-Pointer runExpr2(Expr2 e) {
-    auto init = runExpr3(e.childs[0]);
+Pointer runExpr2(Expr2 e, jmp_buf jmp) {
+    auto init = runExpr3(e.childs[0], jmp);
     if (e.childs.size() == 1) {
         return init;
     }
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto v = runExpr3(e.childs[i]);
+        auto v = runExpr3(e.childs[i], jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1487,15 +1552,15 @@ Pointer runExpr2(Expr2 e) {
 
     return ret;
 }
-Pointer runExpr3(Expr3 e) {
-    auto init = runExpr4(e.childs[0]);
+Pointer runExpr3(Expr3 e, jmp_buf jmp) {
+    auto init = runExpr4(e.childs[0], jmp);
     if (e.childs.size() == 1) {
         return init;
     }
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto v = runExpr4(e.childs[i]);
+        auto v = runExpr4(e.childs[i], jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1522,15 +1587,15 @@ Pointer runExpr3(Expr3 e) {
 
     return ret;
 }
-Pointer runExpr4(Expr4 e) {
-    auto init = runExpr5(e.childs[0]);
+Pointer runExpr4(Expr4 e, jmp_buf jmp) {
+    auto init = runExpr5(e.childs[0], jmp);
     if (e.childs.size() == 1) {
         return init;
     }
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto v = runExpr5(e.childs[i]);
+        auto v = runExpr5(e.childs[i], jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1557,8 +1622,8 @@ Pointer runExpr4(Expr4 e) {
 
     return ret;
 }
-Pointer runExpr5(Expr5 e) {
-    auto init = runExpr6(e.childs[0].second);
+Pointer runExpr5(Expr5 e, jmp_buf jmp) {
+    auto init = runExpr6(e.childs[0].second, jmp);
     if (e.childs.size() == 1) {
         return init;
     }
@@ -1566,7 +1631,7 @@ Pointer runExpr5(Expr5 e) {
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
         auto kind = e.childs[i].first;
-        auto v = runExpr6(e.childs[i].second);
+        auto v = runExpr6(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1599,8 +1664,8 @@ Pointer runExpr5(Expr5 e) {
 
     return ret;
 }
-Pointer runExpr6(Expr6 e) {
-    auto init = runExpr7(e.childs[0].second);
+Pointer runExpr6(Expr6 e, jmp_buf jmp) {
+    auto init = runExpr7(e.childs[0].second, jmp);
     if (e.childs.size() == 1) {
         return init;
     }
@@ -1608,7 +1673,7 @@ Pointer runExpr6(Expr6 e) {
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
         auto kind = e.childs[i].first;
-        auto v = runExpr7(e.childs[i].second);
+        auto v = runExpr7(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1649,8 +1714,8 @@ Pointer runExpr6(Expr6 e) {
 
     return ret;
 }
-Pointer runExpr7(Expr7 e) {
-    auto init = runExpr8(e.childs[0].second);
+Pointer runExpr7(Expr7 e, jmp_buf jmp) {
+    auto init = runExpr8(e.childs[0].second, jmp);
     if (e.childs.size() == 1) {
         return init;
     }
@@ -1658,7 +1723,7 @@ Pointer runExpr7(Expr7 e) {
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
         auto kind = e.childs[i].first;
-        auto v = runExpr8(e.childs[i].second);
+        auto v = runExpr8(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1691,8 +1756,8 @@ Pointer runExpr7(Expr7 e) {
 
     return ret;
 }
-Pointer runExpr8(Expr8 e) {
-    auto init = runExpr9(e.childs[0].second);
+Pointer runExpr8(Expr8 e, jmp_buf jmp) {
+    auto init = runExpr9(e.childs[0].second, jmp);
     if (e.childs.size() == 1) {
         return init;
     }
@@ -1700,7 +1765,7 @@ Pointer runExpr8(Expr8 e) {
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
         auto kind = e.childs[i].first;
-        auto v = runExpr9(e.childs[i].second);
+        auto v = runExpr9(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1771,8 +1836,8 @@ Pointer runExpr8(Expr8 e) {
 
     return ret;
 }
-Pointer runExpr9(Expr9 e) {
-    auto init = runExpr10(e.childs[0].second);
+Pointer runExpr9(Expr9 e, jmp_buf jmp) {
+    auto init = runExpr10(e.childs[0].second, jmp);
     if (e.childs.size() == 1) {
         return init;
     }
@@ -1780,7 +1845,7 @@ Pointer runExpr9(Expr9 e) {
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
         auto kind = e.childs[i].first;
-        auto v = runExpr10(e.childs[i].second);
+        auto v = runExpr10(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
             ll a, b, c;
@@ -1817,8 +1882,8 @@ Pointer runExpr9(Expr9 e) {
 
     return ret;
 }
-Pointer runExpr10(Expr10 e) {
-    auto init = runExpr11(e.child);
+Pointer runExpr10(Expr10 e, jmp_buf jmp) {
+    auto init = runExpr11(e.child, jmp);
     if (e.oper.size() == 0) {
         return init;
     }
@@ -1846,7 +1911,15 @@ Pointer runExpr10(Expr10 e) {
         }
         else if (kind == IS) {
             ret.type = tBool;
-            ret.ptr = sAlloc(isAssAble(ret.type, type));
+            if (isAssAble(ret.type, type)) {
+                ret.ptr = sAlloc(true);
+            }
+            else if (converse(ret, type).type.kind != -1) {
+                ret.ptr = sAlloc(true);
+            }
+            else {
+                ret.ptr = sAlloc(false);
+            }
         }
         else {
             ret = converse(ret, type);
@@ -1855,8 +1928,8 @@ Pointer runExpr10(Expr10 e) {
 
     return ret;
 }
-Pointer runExpr11(Expr11 e) {
-    auto init = runExpr12(e.child);
+Pointer runExpr11(Expr11 e, jmp_buf jmp) {
+    auto init = runExpr12(e.child, jmp);
     if (e.oper.size() == 0) {
         return init;
     }
@@ -1908,8 +1981,8 @@ Pointer runExpr11(Expr11 e) {
 
     return ret;
 }
-Pointer runExpr12(Expr12 e) {
-    auto init = runFactor(e.f);
+Pointer runExpr12(Expr12 e, jmp_buf jmp) {
+    auto init = runFactor(e.f, jmp);
     if (e.childs.size() == 0) {
         return init;
     }
@@ -1920,10 +1993,10 @@ Pointer runExpr12(Expr12 e) {
         auto ptr = e.childs[i].second;
 
         if (kind == OBR) {
-            ret = runFCall(ret, *(FCall*)ptr);
+            ret = runFCall(ret, *(FCall*)ptr, jmp);
         }
         else if (kind == OSB) {
-            ret = runIdx(ret, *(Idx*)ptr);
+            ret = runIdx(ret, *(Idx*)ptr, jmp);
         }
         else {
             ret = runMember(ret, *(Word*)ptr);
@@ -1932,14 +2005,14 @@ Pointer runExpr12(Expr12 e) {
 
     return ret;
 }
-Pointer runFactor(Factor f) {
+Pointer runFactor(Factor f, jmp_buf jmp) {
     Pointer ret;
 
     int cid;
 
     switch (f.kind) {
     case OBR:
-        ret = runExpr(*(Expr*)f.ptr);
+        ret = runExpr(*(Expr*)f.ptr, jmp);
         break;
     case LNUM:
         ret = Pointer{ tNum, false, sAlloc(((Number*)f.ptr)->value) };
@@ -1954,7 +2027,7 @@ Pointer runFactor(Factor f) {
         ret = makeString(*(LiteralString*)f.ptr);
         break;
     case OBL:
-        ret = makeInstance(*(LiteralObject*)f.ptr);
+        ret = makeInstance(*(LiteralObject*)f.ptr, jmp);
         break;
     case WORD:
         ret = findLVar(((Word*)f.ptr)->word);
@@ -1968,7 +2041,7 @@ Pointer runFactor(Factor f) {
 
         break;
     case OSB:
-        ret = makeArray(*(LiteralArray*)f.ptr);
+        ret = makeArray(*(LiteralArray*)f.ptr, jmp);
         break;
     case LTRUE:
         ret = Pointer{ tBool, false, sAlloc(true) };
@@ -2011,9 +2084,6 @@ Pointer converse(Pointer x, Type type) {
         return Pointer{ x.type, false, x.ptr };
     if (isSameType(x.type, type)) {
         return Pointer{ x.type, false, x.ptr };
-    }
-    if(access(x) == 0) {
-        return nil;
     }
     else if (isPriType(x.type) && isPriType(type)) {
         ll ret;
@@ -2078,11 +2148,12 @@ Pointer converse(Pointer x, Type type) {
                 return Pointer{ type, false, x.ptr };
             }
         }
-        else if(iid2 != -1 && cid2 != -1) {
-            int cid3 = hAccess(pAdd(hAccess(access(x)), 0));
-            if(isSuper(cid3, cid2)) {
-                return Pointer{ type, false, sAlloc(hAccess(pAdd(hAccess(access(x)), 1)))};
+        else if (iid2 != -1 && cid2 != -1) {
+            auto iin = toIInstance(x);
+            if (cid2 == iin.data[0]) {
+                return Pointer{ type, false, sAlloc(iin.org) };
             }
+            else return nil;
         }
     }
     return nil;
@@ -2167,8 +2238,8 @@ Pointer makeString(LiteralString str) {
     proc.STACK.back().tmp.push_back(pAlloc(Pointer{ tStr, false, ptr }));
     return pAlloc(Pointer{ tStr, false, ptr });
 }
-Pointer runIdx(Pointer ptr, Idx idx) {
-    auto id = runExpr(idx.id);
+Pointer runIdx(Pointer ptr, Idx idx, jmp_buf jmp) {
+    auto id = runExpr(idx.id, jmp);
     if (!isNum(id.type)) {
         panic("runIdx: wrong index type");
     }
@@ -2294,7 +2365,7 @@ void varStat() {
                     printType(var.second.type);
                     printf(" [ ");
                     for (int k = 0; k < len; i++) {
-                        printf("%d, ", hAccess(pAdd(data, k)));
+                        printf("%lld, ", hAccess(pAdd(data, k)));
                     }
                     printf(" ]\n");
                 }
@@ -2348,5 +2419,21 @@ bool isSuper(int cid, int cid2) {
             return true;
     }
     return false;
+}
+void viewErr() {
+    ll err = proc.ERR;
+
+    if (err == 0) {
+        return;
+    }
+
+    ll ptr = hAccess(err);
+    ll closure = pAdd(ptr, 2);
+
+    jmp_buf jmp;
+    Pointer efunc = Pointer{ Type{FUNC, "", {tStr}}, false, sAlloc(closure) };
+    Pointer str = runFCall(efunc, FCall{}, jmp);
+    
+    nfPrint(std::vector<Pointer>{ str }, jmp);
 }
 #endif

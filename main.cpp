@@ -11,7 +11,7 @@
 
 #define MAX_SOURCE_LENGTH 1000000
 
-char buffer[MAX_SOURCE_LENGTH];
+char buffer[MAX_SOURCE_LENGTH + 1];
 
 void init() {
     initDict();
@@ -26,7 +26,10 @@ char* readWholeFile(const char* path) {
     fclose(fp);
     buffer[size] = '\0';
 
-    return buffer;
+    char* ptr = (char*)malloc(sizeof(char) * (size + 1));
+    memcpy(ptr, buffer, sizeof(char) * (size + 1));
+
+    return ptr;
 }
 
 void printTokens(std::vector<Token> tokens) {
@@ -38,13 +41,23 @@ void printTokens(std::vector<Token> tokens) {
 int main(int argc, char* argv[]) {
     init();
 
-    if (argc == 2) {
-        char* res = readWholeFile(argv[1]);
-        std::vector<Token> tokens = parse(res);
-        Program prog = execRDP(tokens);
-
-        run(prog);
+    if (argc != 2) {
+        panic("wrong argument");
     }
+    char* base = readWholeFile("base.lf");
+    char* res = readWholeFile(argv[1]);
+
+    Program prog = execRDP(parse(res));
+    Program pbase = execRDP(parse(base));
+
+    for (int i = 0; i < prog.childs.size(); i++) {
+        pbase.childs.push_back(prog.childs[i]);
+    }
+    for (int i = 0; i < prog.fn.size(); i++) {
+        pbase.fn.push_back(prog.fn[i]);
+    }
+
+    run(pbase);
 
     return 0;
 }

@@ -1,0 +1,16 @@
+interface Error {
+    error() -> []byte
+}
+
+class RuntimeError {
+    msg []byte
+    ---
+    error() -> []byte {
+        return "runtime error: " + this.msg
+    }
+}
+func makeRuntimeError(msg []byte) -> RuntimeError {
+    return RuntimeError {
+        msg: msg,
+    }
+}
