@@ -738,6 +738,7 @@ bool isAssAble(Type dst, Type src) {
     int cid = findClass(src.name);
     int cid2 = findClass(dst.name);
     int iid = findInterface(dst.name);
+    int iid2 = findInterface(src.name);
     
     if(cid != -1 && cid2 != -1) {
         auto supers = getSupers(cid);
@@ -1068,7 +1069,8 @@ Pointer runFCall(Pointer ptr, FCall args) {
                 auto type = proc.STACK.back().rType;
                 auto value = proc.STACK.back().rValue;
 
-                ret = Pointer{ type, false, value };
+                ret = Pointer{ type, false, sAlloc(value) };
+                ret = pAccess(converse(ret, _fn[fn.fid].ret));
             }
             else {
                 ret = nil;
@@ -2010,6 +2012,9 @@ Pointer converse(Pointer x, Type type) {
     if (isSameType(x.type, type)) {
         return Pointer{ x.type, false, x.ptr };
     }
+    if(access(x) == 0) {
+        return nil;
+    }
     else if (isPriType(x.type) && isPriType(type)) {
         ll ret;
         if (x.type.kind == REAL) {
@@ -2030,6 +2035,7 @@ Pointer converse(Pointer x, Type type) {
     }
     else if (x.type.kind == WORD && type.kind == WORD) {
         int iid = findInterface(type.name);
+        int iid2 = findInterface(x.type.name);
         int cid = findClass(x.type.name);
         int cid2 = findClass(type.name);
 
@@ -2070,6 +2076,12 @@ Pointer converse(Pointer x, Type type) {
         else if (cid != -1 && cid2 != -1) {
             if (isSuper(cid, cid2)) {
                 return Pointer{ type, false, x.ptr };
+            }
+        }
+        else if(iid2 != -1 && cid2 != -1) {
+            int cid3 = hAccess(pAdd(hAccess(access(x)), 0));
+            if(isSuper(cid3, cid2)) {
+                return Pointer{ type, false, sAlloc(hAccess(pAdd(hAccess(access(x)), 1)))};
             }
         }
     }

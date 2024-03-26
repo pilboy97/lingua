@@ -1,0 +1,10 @@
+func main() {
+    // N의 약수를 출력하는 함수
+    var N num = 135
+    var i num
+    for(i = 1;i <= N;i = i + 1) {
+        if(N % i == 0) {
+            print("" + i + " ")
+        }
+    }
+}
