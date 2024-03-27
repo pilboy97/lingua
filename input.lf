@@ -1,28 +1,9 @@
-class Human {
+class SampleError {
     ---
-    walk() {
-        print("성큼성큼")
+    error() -> []byte {
+        return "sample error"
     }
-}
-class Duck {
-    ---
-    walk() {
-        print("뒤뚱뒤뚱")
-    }
-}
-class RobotDuck {
-    ---
-    walk() {
-        print("beep beep")
-    }
-}
-interface Walkable {
-    walk()
-}
-func f() -> Walkable {
-    return RobotDuck{}
 }
 func main() {
-    var robot = f() as RobotDuck
-    robot.walk()
+    raise(SampleError{})
 }

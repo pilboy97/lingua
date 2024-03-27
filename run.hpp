@@ -2428,12 +2428,14 @@ void viewErr() {
     }
 
     ll ptr = hAccess(err);
-    ll closure = pAdd(ptr, 2);
+    ll closure = hAccess(pAdd(ptr, 2));
 
     jmp_buf jmp;
     Pointer efunc = Pointer{ Type{FUNC, "", {tStr}}, false, sAlloc(closure) };
     Pointer str = runFCall(efunc, FCall{}, jmp);
     
+    puts("unhandled error");
     nfPrint(std::vector<Pointer>{ str }, jmp);
+    puts("");
 }
 #endif
