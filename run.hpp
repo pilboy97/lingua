@@ -422,8 +422,8 @@ Pointer nflen(std::vector<Pointer> args, jmp_buf jmp) {
 
     if (!isArray(ptr.type)) panic("len: argument mismatch: not Array");
 
-    Array arr = toArray(ptr);
-    int len = arr.len;
+    ptr = pAccess(ptr);
+    ll len = hAccess(pAdd(ptr.ptr, 1));
 
     return Pointer{tNum, false, sAlloc(len)};
 }
@@ -434,8 +434,8 @@ Pointer nfcap(std::vector<Pointer> args, jmp_buf jmp) {
 
     if (!isArray(ptr.type)) panic("cap: argument mismatch: not Array");
 
-    Array arr = toArray(ptr);
-    int cap = arr.cap;
+    ptr = pAccess(ptr);
+    ll cap = hAccess(pAdd(ptr.ptr, 1));
 
     return Pointer{tNum, false, sAlloc(cap)};
 }
@@ -2244,17 +2244,19 @@ Pointer runIdx(Pointer ptr, Idx idx, jmp_buf jmp) {
         panic("runIdx: wrong index type");
     }
 
-    ll i = toNum(id);
-    Array arr = toArray(ptr);
+    ll Id = toNum(id);
 
-    if (!(0 <= i && i < arr.len)) {
+    ptr = pAccess(ptr);
+    ll p = hAccess(ptr.ptr);
+    ll len = hAccess(pAdd(ptr.ptr, 1));
+    ll p2 = pAdd(p, Id);
+
+    if (!(0 <= Id && Id < len)) {
         panic("runIdx: index out of range");
     }
 
-    ll p = hAccess(access(ptr));
-    ll p2 = pAdd(p, i);
 
-    return Pointer{ arr.eType, ptr.lv, p2 };
+    return Pointer{ ptr.type.add[0], ptr.lv, p2 };
 }
 int findNF(const char* name) {
     for (int i = 1; i < _nf.size(); i++) {
