@@ -10,12 +10,19 @@ class Duck {
         print("뒤뚱뒤뚱")
     }
 }
+class RobotDuck {
+    ---
+    walk() {
+        print("beep beep")
+    }
+}
 interface Walkable {
     walk()
 }
 func f() -> Walkable {
-    return Duck{}
+    return RobotDuck{}
 }
 func main() {
-    f().walk()
+    var robot = f() as RobotDuck
+    robot.walk()
 }

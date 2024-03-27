@@ -2150,7 +2150,7 @@ Pointer converse(Pointer x, Type type) {
         }
         else if (iid2 != -1 && cid2 != -1) {
             auto iin = toIInstance(x);
-            if (cid2 == iin.data[0]) {
+            if (isSuper(iin.data[0], cid2)) {
                 return Pointer{ type, false, sAlloc(iin.org) };
             }
             else return nil;
@@ -2412,10 +2412,10 @@ std::vector<int> getSupers(int cid) {
 
     return ret;
 }
-bool isSuper(int cid, int cid2) {
+bool isSuper(int cid, int scid) {
     auto supers = getSupers(cid);
     for (int i = 0; i < supers.size(); i++) {
-        if (supers[i] == cid2)
+        if (supers[i] == scid)
             return true;
     }
     return false;
