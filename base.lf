@@ -1,16 +1,21 @@
 interface Error {
     error() -> []byte
 }
-
-class RuntimeError {
-    msg []byte
+class ErrDivideByZero {
     ---
     error() -> []byte {
-        return "runtime error: " + this.msg
+        return "divided by zero"
     }
 }
-func makeRuntimeError(msg []byte) -> RuntimeError {
-    return RuntimeError {
-        msg: msg,
+class ErrNullPointer {
+    ---
+    error() -> []byte {
+        return "try to access null pointer"
     }
+}
+func makeErrDivideByZero() -> ErrDivideByZero {
+    return ErrDivideByZero{}
+}
+func makeErrNullPointer() -> ErrNullPointer {
+    return ErrNullPointer{}
 }

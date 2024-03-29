@@ -134,7 +134,8 @@ void objStat();
 void varStat();
 
 void viewErr();
-void makeErr(const char);
+void raiseErrDivideByZero(jmp_buf jmp);
+void raiseErrNullPointer(jmp_buf jmp);
 
 void initProc();
 
@@ -507,7 +508,7 @@ Pointer nfRaise(std::vector<Pointer> args, jmp_buf jmp) {
     if (iid == -1) panic("cannot find interface Error");
 
 
-    if (!isAssAble(err.type, tError)) {
+    if (!isAssAble(tError, err.type)) {
         panic("error should implements Error");
     }
 
@@ -780,7 +781,6 @@ bool isAssAble(Type dst, Type src) {
     int cid = findClass(src.name);
     int cid2 = findClass(dst.name);
     int iid = findInterface(dst.name);
-    int iid2 = findInterface(src.name);
     
     if(cid != -1 && cid2 != -1) {
         auto supers = getSupers(cid);
@@ -1853,8 +1853,12 @@ Pointer runExpr9(Expr9 e, jmp_buf jmp) {
             b = toNum(v);
             if (kind == MUL)
                 c = (a * b);
-            else if (kind == DIV)
+            else if (kind == DIV) {
+                if (b == 0) {
+                    raiseErrDivideByZero(jmp);
+                }
                 c = (a / b);
+            }
             else
                 c = (a % b);
 
@@ -1867,8 +1871,12 @@ Pointer runExpr9(Expr9 e, jmp_buf jmp) {
             b = toByte(v);
             if (kind == MUL)
                 c = (a * b);
-            else if (kind == DIV)
+            else if (kind == DIV) {
+                if (b == 0) {
+                    raiseErrDivideByZero(jmp);
+                }
                 c = (a / b);
+            }
             else
                 c = (a % b);
 
@@ -1999,6 +2007,9 @@ Pointer runExpr12(Expr12 e, jmp_buf jmp) {
             ret = runIdx(ret, *(Idx*)ptr, jmp);
         }
         else {
+            if (access(ret) == 0) {
+                raiseErrNullPointer(jmp);
+            }
             ret = runMember(ret, *(Word*)ptr);
         }
     }
@@ -2439,5 +2450,17 @@ void viewErr() {
     puts("unhandled error");
     nfPrint(std::vector<Pointer>{ str }, jmp);
     puts("");
+}
+void raiseErrNullPointer(jmp_buf jmp) {
+    Pointer ptr = findGVar("makeErrNullPointer");
+    Pointer err = runFCall(ptr, FCall{}, jmp);
+
+    nfRaise(std::vector<Pointer>{ err }, jmp);
+}
+void raiseErrDivideByZero(jmp_buf jmp) {
+    Pointer ptr = findGVar("makeErrDivideByZero");
+    Pointer err = runFCall(ptr, FCall{}, jmp);
+
+    nfRaise(std::vector<Pointer>{ err }, jmp);
 }
 #endif
