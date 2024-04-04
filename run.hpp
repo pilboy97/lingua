@@ -436,7 +436,7 @@ Pointer nfcap(std::vector<Pointer> args, jmp_buf jmp) {
     if (!isArray(ptr.type)) panic("cap: argument mismatch: not Array");
 
     ptr = pAccess(ptr);
-    ll cap = hAccess(pAdd(ptr.ptr, 1));
+    ll cap = hAccess(pAdd(ptr.ptr, 2));
 
     return Pointer{tNum, false, sAlloc(cap)};
 }
@@ -774,9 +774,9 @@ void defVar(DefVar var, jmp_buf jmp) {
     newLVar(name, ret);
 }
 bool isAssAble(Type dst, Type src) {
+    if(dst.kind == -1) return true;
     if (isPriType(dst) && isPriType(src)) return true;
     if (isSameType(dst, src)) return true;
-    if (src.kind == 0) return true;
     
     int cid = findClass(src.name);
     int cid2 = findClass(dst.name);
@@ -1252,7 +1252,6 @@ Array toArray(Pointer ptr) {
     ptr = pAccess(ptr);
     ret.len = hAccess(pAdd(ptr.ptr, 1));
     ret.cap = hAccess(pAdd(ptr.ptr, 2));
-
 
     int p = access(ptr);
     if (p == 0) {

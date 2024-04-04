@@ -1,0 +1,9 @@
+func main() {
+    var arr = []num{}
+    append(arr, 1)
+    append(arr, 2)
+    append(arr, 3)
+
+    print("" + len(arr) + "\n")
+    print("" + cap(arr) + "\n")
+}
