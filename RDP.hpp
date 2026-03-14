@@ -15,8 +15,10 @@ static std::vector<Token> code;
 
 static std::vector<DefFunc> fn;
 
+typedef std::string string;
+
 void panicUnexpectedToken() {
-    panicf("at line %d, %d:unexpected %s", code[header].line, code[header].col, kDict.sprint(code[header].kind));
+    panicf("at line %d, %d:unexpected %s", code[header].line, code[header].col, kDict.sprint(code[header].kind).c_str());
 }
 void forward() {
     header++;
@@ -37,7 +39,7 @@ Token must(int kind) {
     if(header >= code.size()) 
         panic("unexpected EOF");
     if(code[header].kind != kind)
-        panicf("at line %d, %d: unexpected %s: %s needed", code[header].line, code[header].col, kDict.sprint(code[header].kind), kDict.sprint(kind));
+        panicf("at line %d, %d: unexpected %s: %s needed", code[header].line, code[header].col, kDict.sprint(code[header].kind).c_str(), kDict.sprint(kind).c_str());
 
     return code[header++];
 }
@@ -106,7 +108,7 @@ DefFunc parseLambda() {
 
     must(OBR);
     while(header < code.size() && code[header].kind != CBR) {
-        const char* name = must(WORD).str;
+        std::string name = must(WORD).str;
         Type type = parseType();
         ret.frame.push_back(std::make_pair(name, type));
         chk(COMMA);
@@ -473,7 +475,7 @@ InitList parseInitList() {
     must(OBL);
 
     while(header < code.size() && code[header].kind != CBL) {
-        const char *name = must(WORD).str;
+        std::string name = must(WORD).str;
         must(COLON);
         Expr e = parseExpr();
 
@@ -578,7 +580,9 @@ IfStmt parseIfStmt() {
 
         forward();
         if(chk(IF)) {
+            must(OBR);
             Expr cond = parseExpr();
+            must(CBR);
             BlockStmt block = parseBlockStmt();
             ret._if.push_back(std::make_pair(cond, block));
         }
@@ -685,7 +689,7 @@ DefClass parseDefClass() {
         ret.super = must(WORD).str;
     }
     else {
-        ret.super = NULL;
+        ret.super = string("");
     }
 
     must(OBL);
@@ -712,7 +716,7 @@ DefClass parseDefClass() {
     if(chk(SEP)) {
         while(header < code.size() && code[header].kind != CBL) {
             Method method;
-            std::vector<std::pair<const char*, Type>> frame;
+            std::vector<std::pair<std::string, Type>> frame;
             Type rtype;
             BlockStmt body;
             DefFunc func;
@@ -727,7 +731,7 @@ DefClass parseDefClass() {
             
             must(OBR);
             while(header < code.size() && code[header].kind != CBR) {
-                const char* name = must(WORD).str;
+                std::string name = must(WORD).str;
                 Type type = parseType();
                 frame.push_back(std::make_pair(name, type));
                 chk(COMMA);
@@ -806,7 +810,7 @@ DefFunc parseDefFunc() {
     ret.name = must(WORD).str;
     must(OBR);
     while(header < code.size() && code[header].kind != CBR) {
-        const char* name = must(WORD).str;
+        std::string name = must(WORD).str;
         Type type = parseType();
 
         ret.frame.push_back(std::make_pair(name, type));

@@ -36,7 +36,7 @@ bool isSameType(Type x, Type y) {
         return true;
     }
     if (x.kind == WORD) {
-        return strcmp(x.name, y.name) == 0;
+        return x.name == y.name;
     }
 
     return true;
@@ -296,7 +296,7 @@ void printExpr12(Expr12 e) {
             break;
         case DOT:
             ptr3 = (Word*)e.childs[i].second;
-            printf(".%s", ptr3->word);
+            printf(".%s", ptr3->word.c_str());
             break;
         }
     }
@@ -332,11 +332,11 @@ void printFactor(Factor f) {
         break;
     case LSTR:
         ptr5 = (LiteralString*)f.ptr;
-        printf("%s", ptr5->str);
+        printf("%s", ptr5->str.c_str());
         break;
     case WORD:
         ptr6 = (Word*)f.ptr;
-        printf("%s", ptr6->word);
+        printf("%s", ptr6->word.c_str());
         break;
     case OBL:
         ptr7 = (LiteralObject*)f.ptr;
@@ -389,7 +389,7 @@ void printType(Type x) {
         printType(x.add[0]);
         break;
     case WORD:
-        printf("%s", x.name);
+        printf("%s", x.name.c_str());
         break;
     case FUNC:
         printf("func (");
@@ -479,18 +479,18 @@ void printRetStmt(RetStmt s) {
 }
 void printDefVar(DefVar s) {
     if (s.init != NULL && s.type != NULL) {
-        printf("var %s ", s.name);
+        printf("var %s ", s.name.c_str());
         printType(*s.type);
         printf(" = ");
         printExpr(*s.init);
     }
     else if (s.init != NULL) {
-        printf("var %s ", s.name);
+        printf("var %s ", s.name.c_str());
         printf(" = ");
         printExpr(*s.init);
     }
     else {
-        printf("var %s ", s.name);
+        printf("var %s ", s.name.c_str());
         printType(*s.type);
     }
     puts("");

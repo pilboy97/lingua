@@ -16,6 +16,8 @@
 bool DEBUG = false;
 bool NOCLR = false;
 
+typedef std::string string;
+
 struct Array {
     Type eType;
     int len;
@@ -51,7 +53,9 @@ struct Frame {
 
     std::vector<std::vector<DeferStmt>> defer;
     std::vector<Pointer> tmp;
-    std::vector<std::vector<std::pair<const char*, Pointer>>> vars;
+    //std::vector<std::vector<std::pair<string, Pointer>>> vars;
+
+    std::vector<std::unordered_map<string, Pointer>> vars;
 };
 
 typedef Pointer(*func)(std::vector<Pointer> args, jmp_buf jmp);
@@ -59,7 +63,7 @@ typedef void(*act)(Pointer ptr);
 
 struct NFunc {
     Type type;
-    const char* name;
+    string name;
     func fn;
     ll ptr;
 };
@@ -77,9 +81,15 @@ std::vector<ll> mem;
 std::vector<ll> hmem;
 std::vector<std::pair<int, int>> blocks;
 
+std::unordered_map<string, int32_t> _class_cache;
 std::vector<DefClass> _class;
+
+std::unordered_map<string, int> _interface_cache;
 std::vector<DefInterface> _interface;
+
+std::unordered_map<string, int> _fn_cache;
 std::vector<DefFunc> _fn;
+
 std::vector<NFunc> _nf;
 
 Type tVoid = Type{ 0 };
@@ -116,7 +126,7 @@ Array toArray(Pointer ptr);
 Closure toClosure(Pointer ptr);
 Instance toInstance(Pointer ptr);
 IInstance toIInstance(Pointer ptr);
-const char* toStr(Pointer ptr);
+string toStr(Pointer ptr);
 bool isStr(Type type);
 
 std::vector<int> getSupers(int cid);
@@ -178,20 +188,20 @@ void assign(Pointer dst, Pointer src);
 
 void nullPointerException();
 
-void newGVar(const char* name, Pointer ptr);
-void newLVar(const char* name, Pointer ptr);
+void newGVar(string name, Pointer ptr);
+void newLVar(string name, Pointer ptr);
 
-Pointer findLVar(const char* name);
-Pointer findGVar(const char* name);
-int findNF(const char* name);
-int findClass(const char* name);
-int findInterface(const char* name);
+Pointer findLVar(string name);
+Pointer findGVar(string name);
+int findNF(string name);
+int findClass(string name);
+int findInterface(string name);
 
-const char* strAdd(const char* str, const char* str2);
-const char* strAdd(const char* str, ll x);
-const char* strAdd(const char* str, char x);
-const char* strAdd(const char* str, bool x);
-const char* strAdd(const char* str, double x);
+string strAdd(string str, string str2);
+string strAdd(string str, ll x);
+string strAdd(string str, char x);
+string strAdd(string str, bool x);
+string strAdd(string str, double x);
 
 void clear();
 void cleanScope();
@@ -221,7 +231,7 @@ void ref(Pointer ptr) {
     }
     else if (isFunc(ptr.type)) {
         auto cl = toClosure(pAlloc(ptr));
-        auto fn = _fn[cl.fid];
+        auto& fn = _fn[cl.fid];
 
         ll p = hAccess(ptr.ptr);
         if (p == 0) return;
@@ -232,7 +242,7 @@ void ref(Pointer ptr) {
     else if (isObject(ptr.type)) {
         if (findClass(ptr.type.name) != -1) {
             auto in = toInstance(pAlloc(ptr));
-            auto cl = in.cl;
+            auto& cl = in.cl;
 
             ll p = hAccess(ptr.ptr);
             if (p == 0) return;
@@ -242,8 +252,8 @@ void ref(Pointer ptr) {
         }
         else if (findInterface(ptr.type.name) != -1) {
             auto iin = toIInstance(pAlloc(ptr));
-            auto in = iin.in;
-            auto cl = iin.cl;
+            auto& in = iin.in;
+            auto& cl = iin.cl;
 
             ll p = hAccess(ptr.ptr);
             if (p == 0) return;
@@ -285,7 +295,7 @@ void dref(Pointer ptr) {
     }
     else if (isFunc(ptr.type)) {
         auto cl = toClosure(pAlloc(ptr));
-        auto fn = _fn[cl.fid];
+        auto& fn = _fn[cl.fid];
 
         ll p = hAccess(ptr.ptr);
         if (p == 0) return;
@@ -301,7 +311,7 @@ void dref(Pointer ptr) {
     else if (isObject(ptr.type)) {
         if (findClass(ptr.type.name) != -1) {
             auto in = toInstance(pAlloc(ptr));
-            auto cl = in.cl;
+            auto& cl = in.cl;
 
             ll p = hAccess(ptr.ptr);
             if (p == 0) return;
@@ -316,8 +326,8 @@ void dref(Pointer ptr) {
         }
         else if (findInterface(ptr.type.name) != -1) {
             auto iin = toIInstance(pAlloc(ptr));
-            auto in = iin.in;
-            auto cl = iin.cl;
+            auto& in = iin.in;
+            auto& cl = iin.cl;
 
             ll p = hAccess(ptr.ptr);
             if (p == 0) return;
@@ -337,14 +347,14 @@ void dref(Pointer ptr) {
 
 bool isImplOf(DefInterface x, DefClass y) {
     for (int j = 0; j < x.method.size(); j++) {
-        auto m2 = x.method[j];
-        auto f2 = x.method[j];
+        auto& m2 = x.method[j];
+        auto& f2 = x.method[j];
         bool found = false;
         for (int i = 0; i < y.method.size(); i++) {
-            auto m = y.method[i];
-            auto f = _fn[m.idx];
+            auto& m = y.method[i];
+            auto& f = _fn[m.idx];
 
-            if (strcmp(m.name, m2.name) == 0) {
+            if (m.name == m2.name) {
                 found = true;
                 if (!isSameType(f.ret, f2.ret)) return false;
 
@@ -373,7 +383,7 @@ double restore(ll x) {
 
 Proc proc;
 
-const char* toStr(Pointer x) {
+string toStr(Pointer x) {
     if (!isStr(x.type)) panic("toStr: it is not string");
     Array arr = toArray(x);
 
@@ -459,9 +469,9 @@ Pointer nfappend(std::vector<Pointer> args, jmp_buf jmp) {
     ptr = pAccess(ptr);
     if (len + 1 >= cap) {
         hAccess(pAdd(ptr.ptr, 1)) = len + 1;
-        hAccess(pAdd(ptr.ptr, 2)) = cap * 2;
+        hAccess(pAdd(ptr.ptr, 2)) = (cap == 0) ? 2 : cap * 2;
 
-        ll data = hAlloc(cap * 2);
+        ll data = hAlloc((cap == 0) ? 2 : cap * 2);
         for (int i = 0; i < arr.data.size(); i++) {
             hAccess(pAdd(data, i)) = arr.data[i];
         }
@@ -574,7 +584,7 @@ ll oAlloc(std::vector<ll> data) {
     ll ptr2 = hAlloc(data.size());
 
     hAccess(ptr) = data.size();
-    hAccess(ptr) = ptr2;
+    hAccess(pAdd(ptr, 1)) = ptr2;
     
     for (int i = 0; i < data.size(); i++) {
         hAccess(ptr2 + i) = data[i];
@@ -582,6 +592,7 @@ ll oAlloc(std::vector<ll> data) {
 
     return ptr;
 }
+
 ll hAlloc(int size) {
     if (size == 0) return 0;
 
@@ -644,6 +655,7 @@ ll hAlloc(int size) {
 
     return -(begin + 2);
 }
+
 ll sAlloc(ll value) {
     ll ret = proc.ESP;
     while (proc.ESP + 1 > mem.size()) {
@@ -692,9 +704,9 @@ void run(Program prog) {
     _nf.push_back(NFunc{ Type{FUNC, "", {tError}} , "recover", nfRecover, pRecover });
 
     for (int i = 0; i < prog.childs.size(); i++) {
-        auto duo = prog.childs[i];
-        auto kind = duo.first;
-        auto def = duo.second;
+        auto& duo = prog.childs[i];
+        auto& kind = duo.first;
+        auto& def = duo.second;
 
         int* ptr1;
         DefClass* ptr2;
@@ -733,16 +745,17 @@ void initProc() {
     proc.SP = 1;
     proc.ESP = 2;
     
+    proc.STACK.clear();
     proc.STACK.push_back(Frame{});
-    proc.STACK.back().vars.push_back(std::vector<std::pair<const char*, Pointer>>());
+    proc.STACK.back().vars.push_back(std::unordered_map<string, Pointer>());
 }
 void debug() {
     objStat();
     varStat();
 }
 void defVar(DefVar var, jmp_buf jmp) {
-    auto name = var.name;
-    if (findLVar(name).ptr != 0) panicf("defVar: %s is already exists");
+    auto& name = var.name;
+    if (findLVar(name).ptr != 0) panicf("defVar: %s is already exists", name.c_str());
 
     auto& vars = proc.STACK.back().vars;
 
@@ -815,35 +828,39 @@ void assign(Pointer dst, Pointer src) {
         access(dst) = access(neo);
     }
 }
-Pointer findLVar(const char* name) {
-    if (name == NULL) return nil;
-    auto frame = proc.STACK.back().vars;
-    for (int i = frame.size() - 1; i >= 0; i--) {
-        for (int j = 0; j < frame[i].size(); j++) {
-            auto duo = frame[i][j];
-            auto vname = duo.first;
-            auto vptr = duo.second;
+Pointer findLVar(string name) {
+    if (name.length() == 0) return nil;
 
-            if (strcmp(name, vname) == 0) {
-                return vptr;
-            }
-        }
+    auto& frame = proc.STACK.back().vars;
+    // for (int i = frame.size() - 1; i >= 0; i--) {
+    //     for (int j = 0; j < frame[i].size(); j++) {
+    //         auto& duo = frame[i][j];
+    //         auto& vname = duo.first;
+    //         auto& vptr = duo.second;
+
+    //         if (strcmp(name, vname) == 0) {
+    //             return vptr;
+    //         }
+    //     }
+
+    for (int i = frame.size() - 1; i >= 0; i--) {
+        auto it = frame[i].find(name);
+        if (it == frame[i].end()) continue;
+
+        return it->second;
     }
+
     return nil;
 }
-Pointer findGVar(const char* name) {
-    if (name == NULL) return nil;
-    auto frame = proc.STACK.front().vars;
-    for (int i = frame.size() - 1; i >= 0; i--) {
-        for (int j = 0; j < frame[i].size(); j++) {
-            auto duo = frame[i][j];
-            auto vname = duo.first;
-            auto vptr = duo.second;
+Pointer findGVar(string name) {
+    if (name.length() == 0) return nil;
 
-            if (strcmp(name, vname) == 0) {
-                return vptr;
-            }
-        }
+    auto& frame = proc.STACK.front().vars;
+    for (int i = frame.size() - 1; i >= 0; i--) {
+        auto it = frame[i].find(name);
+        if (it == frame[i].end()) continue;
+
+        return it->second;
     }
 
     int fid = findNF(name);
@@ -851,61 +868,73 @@ Pointer findGVar(const char* name) {
         return Pointer{ _nf[fid].type, false, _nf[fid].ptr};
     else return nil;
 }
-int findClass(const char* name) {
-    if (name == NULL) return -1;
+int findClass(string name) {
+    if (name.length() == 0) return -1;
+
+    if (_class_cache.find(name) != _class_cache.end()) return _class_cache[name];
+
     for (int i = 0; i < _class.size(); i++) {
-        if (strcmp(_class[i].name, name) == 0) {
+        if (_class[i].name == name) {
+            _class_cache.insert(std::make_pair(name, i));
+
             return i;
         }
     }
     return -1;
 }
-int findInterface(const char* name) {
-    if (name == NULL) return -1;
+int findInterface(string name) {
+    if (name.length() == 0) return -1;
+
+    if (_interface_cache.find(name) != _interface_cache.end()) return _interface_cache[name];
+
     for (int i = 0; i < _interface.size(); i++) {
-        if (strcmp(_interface[i].name, name) == 0) {
+        if (_interface[i].name == name) {
+            _interface_cache.insert(std::make_pair(name, i));
+
             return i;
         }
     }
     return -1;
 }
 
-void newGVar(const char* name, Pointer ptr) {
-    if (findGVar(name).ptr != 0) panicf("newGVar: %s is already exists", name);
-    if(findClass(name) != -1)  panicf("newGVar: %s is already exists", name);
-    if (findInterface(name) != -1)  panicf("newGVar: %s is already exists", name);
+void newGVar(string name, Pointer ptr) {
+    if (findGVar(name).ptr != 0) panicf("newGVar: %s is already exists", name.c_str());
+    if(findClass(name) != -1)  panicf("newGVar: %s is already exists", name.c_str());
+    if (findInterface(name) != -1)  panicf("newGVar: %s is already exists", name.c_str());
 
     auto& frame = proc.STACK.front();
-    frame.vars.back().push_back(std::make_pair(name, Pointer{ ptr.type, true, ptr.ptr }));
+    frame.vars.back().insert(std::make_pair(name, Pointer{ ptr.type, true, ptr.ptr }));
     ref(pAccess(ptr));
 }
-void newLVar(const char* name, Pointer ptr) {
-    if (findLVar(name).ptr != 0) panicf("newLVar: %s is already exists", name);
+void newLVar(string name, Pointer ptr) {
+    if (findLVar(name).ptr != 0) panicf("newLVar: %s is already exists", name.c_str());
 
     auto& frame = proc.STACK.back();
-    frame.vars.back().push_back(std::make_pair(name, Pointer{ ptr.type, true, ptr.ptr }));
+    frame.vars.back().insert(std::make_pair(name, Pointer{ ptr.type, true, ptr.ptr }));
     ref(pAccess(ptr));
 }
 void defClass(DefClass def) {
-    if (findGVar(def.name).ptr != 0) panicf("defClass: %s is already exists", def.name);
-    if (findClass(def.name) != -1)  panicf("defClass: %s is already exists", def.name);
-    if (findInterface(def.name) != -1)  panicf("defClass: %s is already exists", def.name);
+    if (findGVar(def.name).ptr != 0) panicf("defClass: %s is already exists", def.name.c_str());
+    if (findClass(def.name) != -1)  panicf("defClass: %s is already exists", def.name.c_str());
+    if (findInterface(def.name) != -1)  panicf("defClass: %s is already exists", def.name.c_str());
 
     _class.push_back(def);
+    _class_cache.insert(std::make_pair(def.name, _class.size() - 1));
 }
 void defInterface(DefInterface def) {
-    if (findGVar(def.name).ptr != 0) panicf("defInterface: %s is already exists", def.name);
-    if (findClass(def.name) != -1)  panicf("defInterface: %s is already exists", def.name);
-    if (findInterface(def.name) != -1)  panicf("defInterface: %s is already exists", def.name);
+    if (findGVar(def.name).ptr != 0) panicf("defInterface: %s is already exists", def.name.c_str());
+    if (findClass(def.name) != -1)  panicf("defInterface: %s is already exists", def.name.c_str());
+    if (findInterface(def.name) != -1)  panicf("defInterface: %s is already exists", def.name.c_str());
 
     _interface.push_back(def);
+    _interface_cache.insert(std::make_pair(def.name, _interface.size() - 1));
 }
 void defFunc(int fid) {
     DefFunc& def = _fn[fid];
 
-    if (findGVar(def.name).ptr != 0) panicf("defFunc: %s is already exists", def.name);
-    if (findClass(def.name) != -1)  panicf("defFunc: %s is already exists", def.name);
-    if (findInterface(def.name) != -1)  panicf("defFunc: %s is already exists", def.name);
+    if (findGVar(def.name).ptr != 0) panicf("defFunc: %s is already exists", def.name.c_str());
+    if (findClass(def.name) != -1)  panicf("defFunc: %s is already exists", def.name.c_str());
+    if (findInterface(def.name) != -1)  panicf("defFunc: %s is already exists", def.name.c_str());
 
     Pointer cl = makeClosure(fid, nil);
 
@@ -963,7 +992,7 @@ void runStmt(Stmt stmt, jmp_buf jmp) {
 }
 void runBlockEnd(jmp_buf jmp) {
     for(int i = proc.STACK.back().defer.back().size() - 1;i >= 0;i--) {
-        auto block = proc.STACK.back().defer.back()[i].block;
+        auto& block = proc.STACK.back().defer.back()[i].block;
 
         jmp_buf jp;
         int jv;
@@ -985,35 +1014,62 @@ void runBlockEnd(jmp_buf jmp) {
         }
     }
 }
+
+// void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
+//     enterScope();
+//     for (int i = 0; i < stmt.childs.size(); i++) {
+//         auto& s = stmt.childs[i];
+        
+//         jmp_buf jp;
+//         int jv;
+
+//         if((jv = setjmp(jp)) == 0)
+//             runStmt(s, jp);
+//         else {
+//             runBlockEnd(jmp);
+//             exitScope();
+//             if(jv != -1)
+//                 longjmp(jmp, jv);
+//             else {
+//                 if (proc.ERR != 0)
+//                     longjmp(jmp, -1);
+//             }
+//             return;
+//         }
+//     }
+//     runBlockEnd(jmp);
+//     exitScope();
+// }
+
 void runBlockStmt(BlockStmt stmt, jmp_buf jmp) {
     enterScope();
-    for (int i = 0; i < stmt.childs.size(); i++) {
-        auto s = stmt.childs[i];
-        
-        jmp_buf jp;
-        int jv;
-
-        if((jv = setjmp(jp)) == 0)
-            runStmt(s, jp);
-        else {
-            runBlockEnd(jmp);
-            exitScope();
-            if(jv != -1)
-                longjmp(jmp, jv);
-            else {
-                if (proc.ERR != 0)
-                    longjmp(jmp, -1);
-            }
-            return;
+    
+    jmp_buf jp;
+    int jv;
+    int i = 0;
+    
+    if ((jv = setjmp(jp)) == 0) {
+        // 정상 실행: 모든 statement를 jp 하나로 처리
+        for (; i < stmt.childs.size(); i++) {
+            runStmt(stmt.childs[i], jp);
         }
     }
+    else {
+        // break/continue/return/error 발생
+        runBlockEnd(jmp);
+        exitScope();
+        longjmp(jmp, jv);
+        return;
+    }
+    
     runBlockEnd(jmp);
     exitScope();
 }
+
 void runIfStmt(IfStmt stmt, jmp_buf jmp) {
     for (int i = 0; i < stmt._if.size(); i++) {
-        auto cond = stmt._if[i].first;
-        auto body = stmt._if[i].second;
+        auto& cond = stmt._if[i].first;
+        auto& body = stmt._if[i].second;
 
         if (toBool(runExpr(cond, jmp))) {
             runBlockStmt(body, jmp);
@@ -1047,7 +1103,7 @@ void runForStmt(ForStmt stmt, jmp_buf jmp) {
             break;
         }
         else {
-            continue;
+            //continue;
         }
 
         if (stmt.act != NULL) {
@@ -1066,7 +1122,7 @@ Pointer runFCall(Pointer ptr, FCall args, jmp_buf jmp) {
     }
 
     if (fn.fid >= 0) {
-        auto def = _fn[fn.fid];
+        auto& def = _fn[fn.fid];
 
         std::vector<ll> alist;
         std::vector<ll> clist;
@@ -1095,8 +1151,8 @@ Pointer runFCall(Pointer ptr, FCall args, jmp_buf jmp) {
         if (fn.cap.size() != def.captured.size() + 1) panic("runFCall: cannot call function: captured mismatch");
 
         for (int i = 1; i < fn.cap.size(); i++) {
-            auto c = fn.cap[i];
-            auto f = def;
+            auto& c = fn.cap[i];
+            auto& f = def;
 
             newLVar(f.captured[i - 1], Pointer{ def.cType[i], true, sAlloc(c) });
         }
@@ -1121,8 +1177,8 @@ Pointer runFCall(Pointer ptr, FCall args, jmp_buf jmp) {
             Pointer ret;
 
             if (proc.STACK.back().rType.kind != 0) {
-                auto type = proc.STACK.back().rType;
-                auto value = proc.STACK.back().rValue;
+                auto& type = proc.STACK.back().rType;
+                auto& value = proc.STACK.back().rValue;
 
                 ret = Pointer{ type, false, value };
             }
@@ -1204,38 +1260,32 @@ ll toNum(Pointer ptr) {
     ll p = access(ptr);
     return (ll)p;
 }
-const char* strAdd(const char* str, const char* str2) {
-    int len1 = strlen(str);
-    int len2 = strlen(str2);
-
-    char* buf = (char*)malloc(sizeof(char) * (len1 + len2 + 1));
-    sprintf(buf, "%s%s", str, str2);
-    buf[len1 + len2] = '\0';
-    return buf;
+string strAdd(string str, string str2) {
+    return str+str2;
 }
-const char* strAdd(const char* str, ll x) {
+string strAdd(string str, ll x) {
     char buf[64];
-    sprintf(buf, "%d", x);
+    sprintf(buf, "%lld", x);
 
-    return strAdd(str, buf);
+    return strAdd(str, string(buf));
 }
-const char* strAdd(const char* str, char x) {
+string strAdd(string str, char x) {
     char buf[64];
-    sprintf(buf, "%d", x);
+    sprintf(buf, "%c", x);
 
-    return strAdd(str, buf);
+    return strAdd(str, string(buf));
 }
-const char* strAdd(const char* str, bool x) {
+string strAdd(string str, bool x) {
     if (x)
-        return strAdd(str, "true");
+        return str + string("true");
     else
-        return strAdd(str, "false");
+        return str + string("false");
 }
-const char* strAdd(const char* str, double x) {
+string strAdd(string str, double x) {
     char buf[64];
     sprintf(buf, "%f", x);
 
-    return strAdd(str, buf);
+    return strAdd(str, string(buf));
 }
 double toReal(Pointer ptr) {
     if (!isReal(ptr.type)) panic("toReal: it is not real");
@@ -1339,7 +1389,7 @@ Pointer makeClosure(int fid, Pointer _this) {
         for (int i = 0; i < fn.captured.size(); i++) {
             auto vptr = findLVar(fn.captured[i]);
             if (vptr.ptr == 0) {
-                panicf("makeClosure: cannot capture variable: cannot find %s", fn.captured[i]);
+                panicf("makeClosure: cannot capture variable: cannot find %s", fn.captured[i].c_str());
             }
 
             fn.cType[i + 1] = vptr.type;
@@ -1412,7 +1462,7 @@ Pointer makeInstance(LiteralObject obj, jmp_buf jmp) {
     int cid = findClass(obj.type.name);
     
     if (cid == -1) {
-        panicf("makeInstance: cannot find class %s", obj.type.name);
+        panicf("makeInstance: cannot find class %s", obj.type.name.c_str());
     }
 
     int ptr = hAlloc(2);
@@ -1422,14 +1472,14 @@ Pointer makeInstance(LiteralObject obj, jmp_buf jmp) {
     auto supers = getSupers(cid);
 
     for(int k = 0;k < supers.size();k++) {
-        auto cl = _class[supers[k]];
+        auto& cl = _class[supers[k]];
         for (int i = 0; i < cl.field.size(); i++) {
-            auto f1 = cl.field[i];
+            auto& f1 = cl.field[i];
             bool found = false;
             for (int j = 0; j < obj.init.list.size(); j++) {
-                auto f2 = obj.init.list[j];
+                auto& f2 = obj.init.list[j];
 
-                if (strcmp(f1.name, f2.first) == 0) {
+                if (f1.name == f2.first) {
                     found = true;
                     auto e = runExpr(f2.second, jmp);
                     if(f1.type.kind == WORD && e.type.kind == WORD && findInterface(f1.type.name) != -1 && findClass(e.type.name) != -1) {
@@ -1509,7 +1559,7 @@ Pointer runExpr1(Expr1 e, jmp_buf jmp) {
     }
 
     for (int i = 1; i < e.childs.size(); i++) {
-        if (toBool(runExpr2(e.childs[i], jmp))) {
+        if (!toBool(runExpr2(e.childs[i], jmp))) {
             return Pointer{ tBool, false, sAlloc(false) };
         }
     }
@@ -1629,7 +1679,7 @@ Pointer runExpr5(Expr5 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto kind = e.childs[i].first;
+        auto& kind = e.childs[i].first;
         auto v = runExpr6(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
@@ -1671,7 +1721,7 @@ Pointer runExpr6(Expr6 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto kind = e.childs[i].first;
+        auto& kind = e.childs[i].first;
         auto v = runExpr7(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
@@ -1721,7 +1771,7 @@ Pointer runExpr7(Expr7 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto kind = e.childs[i].first;
+        auto& kind = e.childs[i].first;
         auto v = runExpr8(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
@@ -1763,7 +1813,7 @@ Pointer runExpr8(Expr8 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto kind = e.childs[i].first;
+        auto& kind = e.childs[i].first;
         auto v = runExpr9(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
@@ -1791,13 +1841,13 @@ Pointer runExpr8(Expr8 e, jmp_buf jmp) {
             ret.ptr = sAlloc(c);
         }
         else if (isStr(ret.type) && isStr(v.type)) {
-            const char* a = toStr(ret), *b = toStr(v), * c;
+            string a = toStr(ret), b = toStr(v), c;
             c = strAdd(a, b);
 
             ret = makeString(LiteralString{ c });
         }
         else if (isStr(ret.type) && isNum(v.type)) {
-            const char* a = toStr(ret), * c;
+            string a = toStr(ret), c;
             ll b = toNum(v);
 
             c = strAdd(a, b);
@@ -1805,7 +1855,7 @@ Pointer runExpr8(Expr8 e, jmp_buf jmp) {
             ret = makeString(LiteralString{ c });
         }
         else if (isStr(ret.type) && isByte(v.type)) {
-            const char* a = toStr(ret), * c;
+            string a = toStr(ret), c;
             char b = toByte(v);
 
             c = strAdd(a, b);
@@ -1813,7 +1863,7 @@ Pointer runExpr8(Expr8 e, jmp_buf jmp) {
             ret = makeString(LiteralString{ c });
         }
         else if (isStr(ret.type) && isBool(v.type)) {
-            const char* a = toStr(ret), * c;
+            string a = toStr(ret), c;
             bool b = toBool(v);
 
             c = strAdd(a, b);
@@ -1821,7 +1871,7 @@ Pointer runExpr8(Expr8 e, jmp_buf jmp) {
             ret = makeString(LiteralString{ c });
         }
         else if (isStr(ret.type) && isReal(v.type)) {
-            const char* a = toStr(ret), * c;
+            string a = toStr(ret), c;
             double b = toReal(v);
 
             c = strAdd(a, b);
@@ -1843,7 +1893,7 @@ Pointer runExpr9(Expr9 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 1; i < e.childs.size(); i++) {
-        auto kind = e.childs[i].first;
+        auto& kind = e.childs[i].first;
         auto v = runExpr10(e.childs[i].second, jmp);
 
         if (isNum(ret.type) && isNum(v.type)) {
@@ -1897,8 +1947,8 @@ Pointer runExpr10(Expr10 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 0; i < e.oper.size(); i++) {
-        auto kind = e.oper[i].first;
-        auto type = e.oper[i].second;
+        auto& kind = e.oper[i].first;
+        auto& type = e.oper[i].second;
 
         if (kind == NIL) {
             if (isPriType(ret.type)) panic("runExpr10: var is primitive type");
@@ -1943,7 +1993,7 @@ Pointer runExpr11(Expr11 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 0; i < e.oper.size(); i++) {
-        auto kind = e.oper[i];
+        auto& kind = e.oper[i];
 
         if (kind == NOT) {
             ll x;
@@ -1996,8 +2046,8 @@ Pointer runExpr12(Expr12 e, jmp_buf jmp) {
 
     auto ret = Pointer{ init.type, false, sAlloc(access(init)) };
     for (int i = 0; i < e.childs.size(); i++) {
-        auto kind = e.childs[i].first;
-        auto ptr = e.childs[i].second;
+        auto& kind = e.childs[i].first;
+        auto& ptr = e.childs[i].second;
 
         if (kind == OBR) {
             ret = runFCall(ret, *(FCall*)ptr, jmp);
@@ -2046,7 +2096,7 @@ Pointer runFactor(Factor f, jmp_buf jmp) {
         }
 
         if (ret.ptr == 0) {
-            panicf("runFactor: cannot find var %s", ((Word*)f.ptr)->word);
+            panicf("runFactor: cannot find var %s", ((Word*)f.ptr)->word.c_str());
         }
 
         break;
@@ -2072,7 +2122,7 @@ Pointer runFactor(Factor f, jmp_buf jmp) {
         }
 
         cid = findClass(ret.type.name);
-        if(_class[cid].super == NULL) {
+        if(_class[cid].super.length() == 0) {
             panic("runFactor: this class has no super class");
         }
 
@@ -2129,11 +2179,11 @@ Pointer converse(Pointer x, Type type) {
             data.push_back(access(x));
 
             for (int i = 0; i < in.method.size(); i++) {
-                auto m = in.method[i];
+                auto& m = in.method[i];
                 for (int j = 0; j < cl.method.size(); j++) {
-                    auto m2 = cl.method[j];
+                    auto& m2 = cl.method[j];
 
-                    if (strcmp(m.name, m2.name) == 0) {
+                    if (m.name == m2.name) {
                         data.push_back(access(makeClosure(m2.idx, x)));
                     }
                 }
@@ -2185,10 +2235,10 @@ Pointer runMember(Pointer ptr, Word member) {
             sum += _class[supers[i]].field.size();
 
         for (int j = 0;j < supers.size();j++) {
-            auto cl = _class[supers[j]];
+            auto& cl = _class[supers[j]];
             sum -= cl.field.size();
             for (int i = 0; i < cl.field.size(); i++) {
-                if (strcmp(cl.field[i].name, member.word) == 0) {
+                if (cl.field[i].name == member.word) {
                     Pointer ret = ptr;
 
                     ret.type = cl.field[i].type;
@@ -2199,21 +2249,21 @@ Pointer runMember(Pointer ptr, Word member) {
             }
         }
         for (int j = 0;j < supers.size();j++) {
-            auto cl = _class[supers[j]];
+            auto& cl = _class[supers[j]];
             for (int i = 0; i < cl.method.size(); i++) {
-                if (strcmp(cl.method[i].name, member.word) == 0) {
+                if (cl.method[i].name == member.word) {
                     return makeClosure(cl.method[i].idx, pAlloc(ptr));
                 }
             }
         }
-        panicf("runMember: it has no member %s", member.word);
+        panicf("runMember: it has no member %s", member.word.c_str());
     }
     else if(iid != -1) {
         auto iins = toIInstance(ptr);
         ptr = pAccess(ptr);
 
         for (int i = 0; i < iins.in.method.size(); i++) {
-            if (strcmp(iins.in.method[i].name, member.word) == 0) {
+            if (iins.in.method[i].name == member.word) {
                 Pointer ret = ptr;
 
                 ret = pAccess(ret);
@@ -2223,13 +2273,13 @@ Pointer runMember(Pointer ptr, Word member) {
             }
         }
 
-        panicf("runMember: it has no member %s", member.word);
+        panicf("runMember: it has no member %s", member.word.c_str());
     }
 
-    panicf("runMember: wrong type %s", ptr.type.name);
+    panicf("runMember: wrong type %s", ptr.type.name.c_str());
 }
 Pointer makeString(LiteralString str) {
-    int len = strlen(str.str);
+    int len = str.str.length();
     std::vector<ll> data;
 
     for (int i = 0; i < len; i++) data.push_back(str.str[i]);
@@ -2268,9 +2318,9 @@ Pointer runIdx(Pointer ptr, Idx idx, jmp_buf jmp) {
 
     return Pointer{ ptr.type.add[0], ptr.lv, p2 };
 }
-int findNF(const char* name) {
+int findNF(string name) {
     for (int i = 1; i < _nf.size(); i++) {
-        if (strcmp(_nf[i].name, name) == 0) {
+        if (_nf[i].name == name) {
             return i;
         }
     }
@@ -2289,16 +2339,18 @@ void clear() {
 void cleanScope() {
     clear();
 
-    for (int i = 0; i < proc.STACK.back().vars.back().size(); i++) {
-        auto duo = proc.STACK.back().vars.back()[i];
+    //for (int i = 0; i < proc.STACK.back().vars.back().size(); i++) {
+    for (auto it = proc.STACK.back().vars.back().begin();it != proc.STACK.back().vars.back().begin(); it++) {
+        auto& duo = *it;
         dref(pAccess(duo.second));
     }
 }
 void cleanFrame() {
     for (int i = 0; i < proc.STACK.back().vars.size(); i++) {
-        auto list = proc.STACK.back().vars[i];
-        for (int j = 0; j < list.size(); j++) {
-            auto duo = list[j];
+        auto& list = proc.STACK.back().vars[i];
+        //for (int j = 0; j < list.size(); j++) {
+        for (auto it = list.begin();it != list.end();it++) {
+            auto& duo = *it;
             dref(pAccess(duo.second));
         }
     }
@@ -2355,11 +2407,12 @@ void objStat() {
 }
 void varStat() {
     for (int i = 0; i < proc.STACK.back().vars.size(); i++) {
-        auto list = proc.STACK.back().vars[i];
-        for (int j = 0; j < proc.STACK.back().vars[i].size(); j++) {
-            auto var = proc.STACK.back().vars[i][j];
+        auto& list = proc.STACK.back().vars[i];
+        //for (int j = 0; j < proc.STACK.back().vars[i].size(); j++) {
+        for (auto it = proc.STACK.back().vars[i].begin(); it != proc.STACK.back().vars[i].end();it++) {
+            auto& var = *it;
 
-            printf("%s: ", var.first);
+            printf("%s: ", var.first.c_str());
             if (isPriType(var.second.type)) {
                 printf("%d\n", access(var.second));
             }
@@ -2391,18 +2444,18 @@ void varStat() {
 
                         int cid = hAccess(pAdd(ptr, 1));
                         DefClass cl = _class[cid];
-                        printf("class %s { ", cl.name);
+                        printf("class %s { ", cl.name.c_str());
 
                         ll data = hAccess(ptr);
                         for (int k = 0; k < cl.field.size(); k++) {
-                            printf("%s : %d, ", cl.field[k].name, hAccess(pAdd(data, k)));
+                            printf("%s : %d, ", cl.field[k].name.c_str(), hAccess(pAdd(data, k)));
                         }
                         printf("}\n");
                     }
                     else {
                         int iid = findInterface(var.second.type.name);
                         DefInterface in = _interface[iid];
-                        printf("INTERFACE %s at %d", in.name, -access(var.second));
+                        printf("INTERFACE %s at %d", in.name.c_str(), -access(var.second));
                     }
                 }
                 else if (var.second.type.kind == FUNC) {
@@ -2415,7 +2468,7 @@ void varStat() {
 std::vector<int> getSupers(int cid) {
     std::vector<int> ret;
     ret.push_back(cid);
-    while(_class[cid].super != NULL) {
+    while(_class[cid].super.length() != 0) {
         cid = findClass(_class[cid].super);
         ret.push_back(cid);
     }

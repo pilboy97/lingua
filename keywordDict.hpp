@@ -2,31 +2,29 @@
 #define __KEYWORDDICT_HPP__
 
 #include <algorithm>
-#include <vector>
+#include <unordered_map>
+#include <string>
 #include <set>
 
 #include "code.hpp"
 
 struct KeywordDict {
-    std::vector<std::pair<const char *, int> > dict;
+    std::unordered_map<std::string, int> dict;
 
-    int get(const char * keyword) {
-        for(int i = 0;i < dict.size();i++) {
-            if(strcmp(keyword, dict[i].first) == 0) {
-                return dict[i].second;
-            }
-        }
+    int get(std::string keyword) {
+        if (dict.find(keyword) != dict.end()) return dict[keyword];
 
         return -1;
     }
-    void push(const char * keyword, int value) {
+    void push(std::string keyword, int value) {
         if(get(keyword) >= 0) {
             return;
         }
 
-        dict.push_back(std::make_pair(keyword, value));
+        dict.insert(std::make_pair(keyword, value));
     }
-    const char* sprint(int value) {
+    
+    std::string sprint(int value) {
         switch (value) {
             case LNUM:
                 return "literal number";
@@ -50,9 +48,9 @@ struct KeywordDict {
                 break;
         }
 
-        for(int i = 0;i < dict.size();i++) {
-            if(dict[i].second == value) {
-                return dict[i].first;
+        for(auto it = dict.begin(); it != dict.end(); it++) {
+            if(it->second == value) {
+                return it->first;
             }
         }
 

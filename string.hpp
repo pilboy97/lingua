@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-char* substr(const char* str, int begin, int end) {
+char* substr(std::string str, int begin, int end) {
     char* ret = (char*)malloc(sizeof(char) * (end - begin + 1));
     for (int i = begin; i < end; i++) {
         ret[i - begin] = str[i];
@@ -12,8 +12,8 @@ char* substr(const char* str, int begin, int end) {
     ret[end - begin] = '\0';
     return ret;
 }
-bool hasPrefix(const char* pre, const char* str) {
-    return strncmp(pre, str, strlen(pre)) == 0;
+bool hasPrefix(std::string pre, std::string str) {
+    return strncmp(pre.c_str(), str.c_str(), pre.length()) == 0;
 }
 
 #endif

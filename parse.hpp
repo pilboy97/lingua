@@ -16,8 +16,10 @@
 char errMsg[ERR_MSG_LEN];
 extern KeywordDict kDict;
 
-void parsePanic(int line, int character, const char *msg) {
-    panicf("at line %d, %d: %s", line, character, msg);
+typedef std::string string;
+
+void parsePanic(int line, int character, std::string msg) {
+    panicf("at line %d, %d: %s", line, character, msg.c_str());
 }
 double makeReal(unsigned long long x, unsigned long long y) {
     double a,b;
@@ -30,10 +32,10 @@ double makeReal(unsigned long long x, unsigned long long y) {
 
     return a + b;
 }
-unsigned long long parseNumber(const char* str, int &header, int length, int base) {
+unsigned long long parseNumber(std::string str, int &header, int length, int base) {
     //parse number that has less than 'length' digits
 
-    int len = strlen(str);
+    int len = str.length();
 
     unsigned long long ret = 0;
 
@@ -77,9 +79,9 @@ unsigned long long parseNumber(const char* str, int &header, int length, int bas
 
     return ret;
 }
-std::vector<Token> parse(const char* str) {
+std::vector<Token> parse(std::string str) {
     std::vector<Token> ret;
-    int len = strlen(str);
+    int len = str.length();
 
     int line = 1;
     int sp = -1;
@@ -93,7 +95,7 @@ std::vector<Token> parse(const char* str) {
             // end of line
             while(i < len && str[i] == '\n') {
                 if(ret.size() != 0) {
-                    auto last = ret.back();
+                    auto& last = ret.back();
                     if(!isTaboo(last.kind)) {
                         ret.push_back(Token{SCOLON, ";", 0, 0, line, i-sp});
                     }
@@ -124,10 +126,10 @@ std::vector<Token> parse(const char* str) {
             if(i < len && str[i] == '.'){
                 i++;
                 unsigned long long y = parseNumber(str, i, 32, base);
-                ret.push_back(Token{LREAL, NULL, makeReal(x, y), 0, line, i - sp});
+                ret.push_back(Token{LREAL, string(""), makeReal(x, y), 0, line, i - sp});
             }
             else
-                ret.push_back(Token{LNUM, NULL, 0, x, line, i-sp});
+                ret.push_back(Token{LNUM, string(""), 0, x, line, i-sp});
         }
         else if(str[i] == '\\') {
             // maybe unsigned number literal or byte literal
@@ -139,7 +141,7 @@ std::vector<Token> parse(const char* str) {
                 //literal byte number
 
                 i++;
-                Token t = {LBYTE, NULL, 0, parseNumber(str, i, 2, 16), line, i-sp-1};
+                Token t = {LBYTE, string(""), 0, parseNumber(str, i, 2, 16), line, i-sp-1};
 
                 ret.push_back(t);
             }
@@ -207,7 +209,7 @@ std::vector<Token> parse(const char* str) {
                 }
             }
             if(!found) {
-                parsePanic(line, i - sp, "unknown operator");
+                parsePanic(line, i - sp, std::string("unknown symbol: ") + str[i]);
             }
         }
     }

@@ -9,7 +9,7 @@
 
 struct Type {
     int kind;
-    const char* name;
+    std::string name;
     std::vector<Type> add;
 };
 
@@ -70,7 +70,7 @@ struct Idx {
     Expr id;
 };
 struct InitList {
-    std::vector<std::pair<const char*, Expr> > list;
+    std::vector<std::pair<std::string, Expr> > list;
 };
 struct Number {
     long long value;
@@ -82,10 +82,10 @@ struct ByteNumber {
     unsigned char value;
 };
 struct Word {
-    const char* word;
+    std::string word;
 };
 struct LiteralString {
-    const char* str;
+    std::string str;
 };
 struct LiteralArray {
     Type etype;
@@ -120,40 +120,40 @@ struct RetStmt {
     Expr* expr;
 };
 struct DefVar {
-    const char* name;
+    std::string name;
     Type* type;
     Expr* init;
 };
 struct Method {
     bool isPrivate;
-    const char* name;
+    std::string name;
     int idx;
 };
 struct Field {
     bool isPrivate;
-    const char* name;
+    std::string name;
     Type type;
 };
 struct IMember {
     bool isPrivate;
-    const char* name;
+    std::string name;
     std::vector<Type> frame;
     Type ret;
 };
 struct DefInterface {
-    const char* name;
+    std::string name;
     std::vector<IMember> method;
 };
 struct DefClass {
-    const char* name;
-    const char* super;
+    std::string name;
+    std::string super;
     std::vector<Field> field;
     std::vector<Method> method;
 };
 struct DefFunc {
-    const char* name;
-    std::vector<std::pair<const char*, Type> > frame;
-    std::vector<const char* > captured;
+    std::string name;
+    std::vector<std::pair<std::string, Type> > frame;
+    std::vector<std::string > captured;
     std::vector<Type> cType;
     Type ret;
     BlockStmt body;

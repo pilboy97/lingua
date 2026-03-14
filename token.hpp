@@ -2,10 +2,11 @@
 #define __TOKEN_HPP__
 
 #include "code.hpp"
+#include <string>
 
 struct Token {
     int kind;
-    const char *str;
+    std::string str;
     double real;
     unsigned long long value;
     int line, col;

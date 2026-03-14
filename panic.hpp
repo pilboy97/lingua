@@ -8,15 +8,15 @@
 
 #define ERR_MSG_LEN 1024
 
-void panic(const char* msg) {
-    printf("%s\n", msg);
+void panic(std::string msg) {
+    printf("%s\n", msg.c_str());
     exit(1);
 }
-void panicf(const char* msg, ...) {
+void panicf(std::string msg, ...) {
     va_list argptr;
     va_start(argptr, msg);
 
-    int len = strlen(msg);
+    int len = msg.length();
     int i;
 
     for(i = 0;i < len;i++) {
@@ -31,7 +31,7 @@ void panicf(const char* msg, ...) {
                 printf("%d", num);
             }
             else if(msg[i] == 's') {
-                const char *str = va_arg(argptr, const char*);
+                const char * str = va_arg(argptr, const char *);
                 printf("%s", str);
             }
             else if(msg[i] == 'f') {

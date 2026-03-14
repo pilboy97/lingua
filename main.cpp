@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <vector>
+#include <exception>
 
 #include "token.hpp"
 #include "keywordDict.hpp"
@@ -34,18 +35,19 @@ char* readWholeFile(const char* path) {
 
 void printTokens(std::vector<Token> tokens) {
     for(int i = 0; i < tokens.size();i++) {
-        printf("%s %s %llu\n", kDict.sprint(tokens[i].kind), tokens[i].str, tokens[i].value);
+        printf("%s %s %llu\n", kDict.sprint(tokens[i].kind).c_str(), tokens[i].str.c_str(), tokens[i].value);
     }
 }
 
 int main(int argc, char* argv[]) {
+    try{
     init();
 
-    if (argc != 2) {
-        panic("wrong argument");
-    }
     char* base = readWholeFile("base.lf");
-    char* res = readWholeFile(argv[1]);
+    char* res;
+
+    if (argc == 1) res = readWholeFile("input.lf");
+    else res = readWholeFile(argv[1]);
 
     Program prog = execRDP(parse(res));
     Program pbase = execRDP(parse(base));
@@ -58,6 +60,10 @@ int main(int argc, char* argv[]) {
     }
 
     run(pbase);
+    }
+    catch (std::exception e) {
+        printf("%s", e.what());
+    }
 
     return 0;
 }
