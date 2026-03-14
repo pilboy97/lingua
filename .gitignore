@@ -2,3 +2,8 @@
 a.out
 .vscode
 input.lf
+*.pch
+*Debug
+*.o
+*.json
+*/*.json
