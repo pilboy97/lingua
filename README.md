@@ -33,7 +33,7 @@ g++ -std=c++17 -o lf main.cpp procStruct.cpp
 ## Usage / 使い方
 
 ```bash
-./lf <source_file.lf>
+./lingua <source_file.lf>
 ```
 
 `base.lf` is loaded automatically as the standard library.  
@@ -41,7 +41,7 @@ g++ -std=c++17 -o lf main.cpp procStruct.cpp
 
 ```bash
 # Example / 例
-./lf input.lf
+./lingua input.lf
 ```
 
 ---
