@@ -24,10 +24,6 @@ A tree-walking interpreter for a statically-typed scripting language written in 
 Requires a C++17-compatible compiler.  
 C++17対応コンパイラが必要です。
 
-```bash
-g++ -std=c++17 -o lf main.cpp procStruct.cpp
-```
-
 ---
 
 ## Usage / 使い方
