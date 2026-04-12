@@ -2,6 +2,7 @@
 #define __PANIC_HPP__
 
 #include <stdlib.h>
+#include <cstdint>
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>

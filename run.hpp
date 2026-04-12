@@ -9,6 +9,7 @@
 #include <setjmp.h>
 #include <string.h>
 #include <stdlib.h>
+#include <cstdint>
 
 #define ll long long
 #define INIT_MEM_SIZE 1024

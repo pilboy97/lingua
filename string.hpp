@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <cstdint>
 
 char* substr(std::string str, int begin, int end) {
     char* ret = (char*)malloc(sizeof(char) * (end - begin + 1));
